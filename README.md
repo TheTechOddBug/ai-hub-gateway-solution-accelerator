@@ -65,7 +65,42 @@ At a high level, the accelerator includes:
 - [validation](./validation): Jupyter notebooks for post-deployment validation and onboarding.
 - [guides](./guides): operational and architecture documentation.
 
-## 🏗️ Architecture Overview
+## 🏷️ Release Version
+
+The accelerator tracks its release state in a single source-of-truth manifest at the repository
+root — [`release.json`](./release.json). Instead of one monolithic version, it uses **independent,
+component-scoped version tracks** so a change in one subsystem does not force re-versioning of
+unrelated ones:
+
+| Track | Meaning |
+|-------|---------|
+| `master-version` | Umbrella accelerator release version |
+| `routing-version` | LLM request routing logic (backend pools, model resolution, failover) |
+| `backend-contract-version` | Shape of the `llmBackendConfig` backend onboarding contract |
+| `access-contract-version` | Shape of the Citadel Access Contract (products & access policies) |
+| `gateway-upgrade-version` | In-place APIM Gateway Upgrade tooling (currently `-preview`) |
+| `usage-ingestion-version` | Usage ingestion pipeline (Logic App + Function) |
+
+The deployed manifest is exposed at runtime through the **Release Version API** in API Management:
+
+```bash
+curl https://<your-apim-gateway-host>/version
+```
+
+This anonymous `GET /version` endpoint returns `release.json` verbatim (served from an APIM mock
+policy — no backend). It is created automatically by the **primary deployment** and created/updated
+by the **APIM Gateway Upgrade**, so the endpoint always reflects the currently deployed release.
+
+> [!IMPORTANT]
+> The primary deployment (`main.bicep`) is used for the **initial implementation** only. After the
+> hub is live, the **[APIM Gateway Upgrade](./bicep/infra/apim-gateway-upgrade/README.md)** submodule
+> is the standard way to move the accelerator to new releases — applying the new version in place
+> without re-provisioning the APIM service or landing-zone infrastructure.
+
+> 📎 For version-track semantics, SemVer rules, and per-track migration guidance, see the
+> [**Release Version Management Guide**](./guides/release-version-management.md).
+
+## �🏗️ Architecture Overview
 
 AI Citadel Governance Hub follows a **Central-Control-Plane** with decentralized **Agent-Execution-Plane** architecture** that integrates seamlessly with your existing `Azure Enterprise Landing Zone` network topology:
 
@@ -309,7 +344,6 @@ Master AI Citadel Governance Hub implementation and operations with our detailed
 | [**🆕 Governance Hub Benefits**](./guides/governance-hub-benefits.md) | Detailed benefits and stakeholder value of adopting Citadel Governance Hub |
 | [**🆕 Citadel Sizing Guide**](./guides/citadel-sizing-guide.md) | Guidance on sizing the Citadel Governance Hub based on workloads and environments |
 | [**🆕 PTU Estimation Guide**](./guides/put-estimation-guide.md) | Azure OpenAI / Foundry LLM sizing guide for PTU vs Pay-as-you-Go capacity planning |
-
 ### 🏗️ **Landing zone deployment**
 
 | Guide | Description |
@@ -325,6 +359,7 @@ Master AI Citadel Governance Hub implementation and operations with our detailed
 |-------|-------------|
 | [**🆕 LLM Backend Onboarding Guide**](./bicep/infra/llm-backend-onboarding/README.md) | Independent LLM backend routing deployment with load balancing and failover |
 | [**🆕 APIM Gateway Upgrade Guide**](./bicep/infra/apim-gateway-upgrade/README.md) | Update gateway policies, APIs, backends, diagnostics, and named values on an existing APIM instance without re-provisioning infrastructure |
+| [**🆕 Release Version Management**](./guides/release-version-management.md) | Versioning model of the accelerator, the `/version` runtime endpoint, and how to plan and implement migrations |
 
 ### 🔧 **Use-case Onboarding**
 

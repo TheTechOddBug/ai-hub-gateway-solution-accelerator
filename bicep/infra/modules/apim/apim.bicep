@@ -479,6 +479,16 @@ module apiUnifiedAI './unified-ai-api.bicep' = if (enableUnifiedAiApi) {
   ]
 }
 
+////// Release Version API /////////////
+// Lightweight API exposing a single GET operation that returns the accelerator
+// release manifest (release.json) as static JSON content via a mock response.
+module apiReleaseVersion './version-api.bicep' = {
+  name: 'release-version-api'
+  params: {
+    apiManagementName: apimService.name
+  }
+}
+
 ////// JWT Authentication Named Values /////////////
 // These named values support JWT authentication across all APIs (Azure OpenAI,
 // Universal LLM, and Unified AI). The security-handler fragment is included in all

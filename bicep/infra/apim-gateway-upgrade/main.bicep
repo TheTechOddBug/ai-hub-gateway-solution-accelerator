@@ -61,6 +61,9 @@ param updateLLMPolicyFragments bool = true
 @description('Update the Unified AI Wildcard API definition, product, and policy')
 param updateUnifiedAiApi bool = true
 
+@description('Create or update the Release Version API (single GET operation returning release.json)')
+param updateReleaseVersionApi bool = true
+
 @description('Update JWT authentication named values (JWT-TenantId, JWT-AppRegistrationId, JWT-Issuer, JWT-OpenIdConfigUrl)')
 param updateJwtNamedValues bool = true
 
@@ -544,6 +547,19 @@ module apiUnifiedAI '../modules/apim/unified-ai-api.bicep' = if (updateUnifiedAi
     llmPolicyFragments
     azMonitorLoggerNew
   ]
+}
+
+// =====================================================================
+//    APIs — Release Version API
+// =====================================================================
+
+// Lightweight API exposing a single GET operation that returns the accelerator
+// release manifest (release.json) as static JSON content via a mock response.
+module apiReleaseVersion '../modules/apim/version-api.bicep' = if (updateReleaseVersionApi) {
+  name: 'release-version-api-upgrade'
+  params: {
+    apiManagementName: apimService.name
+  }
 }
 
 // =====================================================================
