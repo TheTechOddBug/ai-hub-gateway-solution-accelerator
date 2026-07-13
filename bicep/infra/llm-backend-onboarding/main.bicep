@@ -239,6 +239,12 @@ module llmPolicyFragments 'modules/llm-policy-fragments.bicep' = {
     awsRegion: awsRegion
     modelAliases: modelAliases
     keyVaultName: keyVaultName
+    // Backend contract reporting (surfaced via GET /version/backend-contract)
+    apimTarget: apim
+    configureCircuitBreaker: configureCircuitBreaker
+    circuitBreakerDefaults: circuitBreakerDefaults
+    configureSessionAffinity: configureSessionAffinity
+    sessionAffinityDefaults: sessionAffinityDefaults
   }
 }
 
@@ -294,4 +300,5 @@ output policyFragments object = {
   resolveModelAlias: llmPolicyFragments.outputs.resolveModelAliasFragmentName
   responsesIdSecurity: llmPolicyFragments.outputs.responsesIdSecurityFragmentName
   responsesIdCacheStore: llmPolicyFragments.outputs.responsesIdCacheStoreFragmentName
+  backendContract: llmPolicyFragments.outputs.backendContractFragmentName
 }

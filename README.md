@@ -91,6 +91,20 @@ This anonymous `GET /version` endpoint returns `release.json` verbatim (served f
 policy — no backend). It is created automatically by the **primary deployment** and created/updated
 by the **APIM Gateway Upgrade**, so the endpoint always reflects the currently deployed release.
 
+The same API also exposes `GET /version/backend-contract`, which returns the **active LLM backend
+routing contract** — a detailed projection of the effective onboarding configuration (APIM target,
+full `llmBackendConfig` with per-model metadata, circuit breaker and session affinity settings, model
+aliases, and derived pools), plus the `backend-contract-version`:
+
+```bash
+curl https://<your-apim-gateway-host>/version/backend-contract
+```
+
+This response is produced by a dynamically generated `backend-contract` policy fragment that is
+refreshed by **both** the primary deployment **and** the LLM Backend Onboarding submodule — so
+onboarding new backends updates the contract without changing the API definition. Inline secret
+values are redacted.
+
 > [!IMPORTANT]
 > The primary deployment (`main.bicep`) is used for the **initial implementation** only. After the
 > hub is live, the **[APIM Gateway Upgrade](./bicep/infra/apim-gateway-upgrade/README.md)** submodule

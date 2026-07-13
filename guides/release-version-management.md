@@ -83,16 +83,88 @@ The endpoint is served entirely from an APIM **mock (`return-response`)** policy
 manifest is embedded into the operation policy at deploy time, so there is no backend dependency and
 no latency cost.
 
+### Backend Contract Endpoint
+
+The same API exposes a second GET operation that returns the **active LLM backend routing contract**
+currently deployed on the gateway — a detailed projection of the effective onboarding
+configuration, alongside the `backend-contract-version`.
+
+- **Path:** `GET /version/backend-contract`
+- **Auth:** anonymous by default (inherits the API setting)
+- **Response:** `application/json` describing the live configuration
+
+```bash
+curl https://<your-apim-gateway-host>/version/backend-contract
+```
+
+The contract includes:
+
+| Section | Contents |
+|---------|----------|
+| `masterVersion`, `backendContractVersion` | Versions from `release.json` |
+| `apim` | APIM target coordinates (`subscriptionId`, `resourceGroupName`, `name`) |
+| `circuitBreaker` | `enabled` flag + the full `defaults` (failure count/interval, trip duration, status ranges, error reasons) |
+| `sessionAffinity` | `enabled` flag + the full `defaults` (cookie name, source) |
+| `modelAliases` | The configured model alias definitions (name, models, strategy, weights) |
+| `backends` | The **full** `llmBackendConfig` array, including every model's metadata (sku, capacity, version, api versions, timeouts, retirement dates, session-aware flags) |
+| `pools` | The derived backend pools (pool name, type, and the models each serves) |
+
+```jsonc
+{
+  "masterVersion": "1.0.0",
+  "backendContractVersion": "1.0.0",
+  "apim": { "subscriptionId": "…", "resourceGroupName": "rg-citadel-governance-hub", "name": "apim-citadel" },
+  "circuitBreaker": {
+    "enabled": true,
+    "defaults": { "failureCount": 3, "failureInterval": "PT5M", "tripDuration": "PT1M", "acceptRetryAfter": true, "errorReasons": ["Server errors"], "statusCodeRanges": [ { "min": 429, "max": 429 }, { "min": 500, "max": 503 } ] }
+  },
+  "sessionAffinity": { "enabled": true, "defaults": { "cookieName": "ai-gateway-affinity", "source": "Cookie" } },
+  "modelAliases": [ { "name": "gpt-advanced", "models": ["gpt-5", "gpt-4.1"], "strategy": "priority" } ],
+  "backends": [
+    {
+      "backendId": "aif-citadel-primary",
+      "backendType": "ai-foundry",
+      "endpoint": "https://aif-…-0.cognitiveservices.azure.com/",
+      "authType": "managed-identity",
+      "supportedModels": [ { "name": "gpt-4o", "sku": "GlobalStandard", "capacity": 100, "modelFormat": "OpenAI", "modelVersion": "2024-11-20", "retirementDate": "2026-09-30" } ],
+      "priority": 1, "weight": 100
+    }
+  ],
+  "pools": [ { "poolName": "gpt-4o-pool", "poolType": "ai-foundry", "supportedModels": ["gpt-4o"] } ]
+}
+```
+
+> [!IMPORTANT]
+> Any inline `authConfig.secretValue` is **redacted** (`***redacted***`) before it is embedded in the
+> contract. Key Vault secret URIs and named-value keys are preserved (they are references, not
+> secrets). Endpoints are included so operators can see routing targets.
+
+Unlike `GET /version` (a static mock), this operation returns the response through a **dynamically
+generated policy fragment** named `backend-contract`. The fragment's JSON body is built at deploy
+time from the effective onboarding configuration (`string()`-serialized Bicep object), so it always
+reflects what the gateway is configured to route to.
+
+> [!NOTE]
+> The `backend-contract` fragment is (re)generated and updated by **both** the primary deployment
+> **and** the LLM Backend Onboarding submodule. The onboarding submodule supplies the richest detail
+> (circuit breaker, session affinity, and model aliases are onboarding features); the primary
+> deployment reports session affinity and aliases as inactive until an onboarding run configures
+> them. Because the operation references the fragment by id, onboarding refreshes the response
+> **without** touching the Release Version API definition.
+
 ### How it gets created / updated
 
 | Deployment | Behavior |
 |------------|----------|
-| **Primary accelerator** (`bicep/infra/main.bicep` → `apim.bicep`) | Creates the Release Version API automatically with the content of `release.json` at deploy time. |
-| **APIM Gateway Upgrade** (`bicep/infra/apim-gateway-upgrade/main.bicep`) | Creates **or** updates the Release Version API (toggle `updateReleaseVersionApi`, default `true`) so the endpoint always reflects the currently deployed manifest. |
+| **Primary accelerator** (`bicep/infra/main.bicep` → `apim.bicep`) | Creates the Release Version API (both operations) with the content of `release.json` and generates the `backend-contract` fragment from the deployed backend config. |
+| **LLM Backend Onboarding** (`bicep/infra/llm-backend-onboarding/main.bicep`) | Regenerates the `backend-contract` fragment from the onboarded `llmBackendConfig`, refreshing the `GET /version/backend-contract` response. |
+| **APIM Gateway Upgrade** (`bicep/infra/apim-gateway-upgrade/main.bicep`) | Creates **or** updates the Release Version API (toggle `updateReleaseVersionApi`, default `true`) and, when `updateLLMPolicyFragments` is on, refreshes the `backend-contract` fragment. |
 
-Both paths use the same shared module — `bicep/infra/modules/apim/version-api.bicep` — which reads
-`release.json` via `loadTextContent` relative to the module. Bump the manifest, redeploy (or run the
-gateway upgrade), and the `/version` endpoint reflects the new values.
+The Release Version API is created by the shared module `bicep/infra/modules/apim/version-api.bicep`
+(reads `release.json` via `loadTextContent`). The `backend-contract` fragment is produced by
+`llm-policy-fragments.bicep` (present in both the primary `modules/apim` path and the LLM onboarding
+`modules` path). Bump the manifest and/or change your backend config, redeploy (or run the gateway
+upgrade / onboarding), and the endpoints reflect the new values.
 
 ---
 

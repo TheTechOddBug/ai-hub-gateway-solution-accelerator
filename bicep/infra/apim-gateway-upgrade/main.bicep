@@ -560,6 +560,12 @@ module apiReleaseVersion '../modules/apim/version-api.bicep' = if (updateRelease
   params: {
     apiManagementName: apimService.name
   }
+  dependsOn: [
+    // The backend-contract operation includes the dynamically generated
+    // 'backend-contract' policy fragment. When fragments are being updated in
+    // the same run, ensure they are created/updated first.
+    llmPolicyFragments
+  ]
 }
 
 // =====================================================================

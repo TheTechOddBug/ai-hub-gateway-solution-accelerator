@@ -374,6 +374,16 @@ module llmPolicyFragments './llm-policy-fragments.bicep' =  {
     policyFragmentConfig: llmBackendPools.outputs.policyFragmentConfig
     managedIdentityClientId: managedIdentity.properties.clientId
     llmBackendConfig: llmBackendConfig
+    // Backend contract reporting (surfaced via GET /version/backend-contract). The primary
+    // deployment enables the circuit breaker; session affinity and model aliases are features
+    // of the LLM onboarding submodule, so they are reported as inactive here until onboarding runs.
+    apimTarget: {
+      subscriptionId: subscription().subscriptionId
+      resourceGroupName: resourceGroup().name
+      name: apimService.name
+    }
+    configureCircuitBreaker: true
+    configureSessionAffinity: false
   }
 }
 
@@ -487,6 +497,11 @@ module apiReleaseVersion './version-api.bicep' = {
   params: {
     apiManagementName: apimService.name
   }
+  dependsOn: [
+    // The backend-contract operation includes the dynamically generated
+    // 'backend-contract' policy fragment, which must exist first.
+    llmPolicyFragments
+  ]
 }
 
 ////// JWT Authentication Named Values /////////////

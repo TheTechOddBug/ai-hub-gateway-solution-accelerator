@@ -39,6 +39,12 @@ param subscriptionKeyName string = 'api-key'
 @description('The raw JSON content of the release manifest to serve. Defaults to the repository release.json.')
 param releaseContent string = loadTextContent('../../../../release.json')
 
+@description('Whether to add the GET backend-contract operation that returns the active LLM backend routing contract via the backend-contract policy fragment.')
+param includeBackendContractOperation bool = true
+
+@description('The id of the policy fragment that returns the active backend contract. Created/updated by the primary deployment and the LLM onboarding submodule.')
+param backendContractFragmentId string = 'backend-contract'
+
 // ------------------
 //    VARIABLES
 // ------------------
@@ -74,6 +80,25 @@ var versionApiPolicySuffix = '''</set-body>
 </policies>'''
 
 var versionApiPolicyXml = '${versionApiPolicyPrefix}${releaseContent}${versionApiPolicySuffix}'
+
+// Operation policy for the backend-contract operation. It simply includes the dynamically
+// generated `backend-contract` fragment, which emits the active routing contract as JSON.
+var backendContractOperationPolicyXml = replace('''
+<policies>
+    <inbound>
+        <base />
+        <include-fragment fragment-id="FRAGMENTID" />
+    </inbound>
+    <backend>
+        <base />
+    </backend>
+    <outbound>
+        <base />
+    </outbound>
+    <on-error>
+        <base />
+    </on-error>
+</policies>''', 'FRAGMENTID', backendContractFragmentId)
 
 // ------------------
 //    RESOURCES
@@ -130,6 +155,37 @@ resource versionApiGetOperationPolicy 'Microsoft.ApiManagement/service/apis/oper
   properties: {
     format: 'rawxml'
     value: versionApiPolicyXml
+  }
+}
+
+resource versionApiBackendContractOperation 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = if (includeBackendContractOperation) {
+  name: 'get-backend-contract'
+  parent: versionApi
+  properties: {
+    displayName: 'Get Backend Contract'
+    method: 'GET'
+    urlTemplate: '/backend-contract'
+    description: 'Returns the active LLM backend routing contract (version, pools, backends) deployed on this gateway. The response is produced by the dynamically generated backend-contract policy fragment.'
+    responses: [
+      {
+        statusCode: 200
+        description: 'The active backend routing contract.'
+        representations: [
+          {
+            contentType: 'application/json'
+          }
+        ]
+      }
+    ]
+  }
+}
+
+resource versionApiBackendContractOperationPolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2024-06-01-preview' = if (includeBackendContractOperation) {
+  name: 'policy'
+  parent: versionApiBackendContractOperation
+  properties: {
+    format: 'rawxml'
+    value: backendContractOperationPolicyXml
   }
 }
 
