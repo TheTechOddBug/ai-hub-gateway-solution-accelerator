@@ -285,28 +285,6 @@ param aiFoundryModelsConfig = [
     aiserviceIndex: 0
   }
   {
-    name: 'Phi-4'
-    publisher: 'Microsoft'
-    version: '7'
-    sku: 'GlobalStandard'
-    capacity: 1
-    retirementDate: '2099-10-14'
-    apiVersion: '2025-04-01-preview'
-    timeout: 180
-    aiserviceIndex: 0
-  }
-  {
-    name: 'Phi-4'
-    publisher: 'Microsoft'
-    version: '7'
-    sku: 'GlobalStandard'
-    capacity: 1
-    retirementDate: '2099-10-14'
-    apiVersion: '2025-04-01-preview'
-    timeout: 180
-    aiserviceIndex: 1
-  }
-  {
     name: 'gpt-5.4-mini'
     publisher: 'OpenAI'
     version: '2026-03-17'
