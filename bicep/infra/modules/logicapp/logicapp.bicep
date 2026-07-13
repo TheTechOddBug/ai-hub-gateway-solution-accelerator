@@ -209,4 +209,7 @@ module azureMonitorConnectionAccess 'api-connection-access.bicep' = {
     location: location
     tags: tags
   }
+  dependsOn: [
+    azureMonitorConnection
+  ]
 }

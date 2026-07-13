@@ -220,6 +220,9 @@ module azureMonitorConnectionAccess '../../modules/logicapp/api-connection-acces
     location: location
     tags: tags
   }
+  dependsOn: [
+    azureMonitorConnection
+  ]
 }
 
 @description('Name of the Logic App.')
