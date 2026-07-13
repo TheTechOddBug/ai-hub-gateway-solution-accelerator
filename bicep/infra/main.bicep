@@ -1113,7 +1113,7 @@ module logicApp './modules/logicapp/logicapp.bicep' = {
     applicationInsightsName: monitoring.outputs.funcApplicationInsightsName
     skuFamily: 'WS'
     skuName: 'WS1'
-    skuCapaicty: logicAppsSkuCapacityUnits
+    skuCapacity: logicAppsSkuCapacityUnits
     skuSize: 'WS1'
     skuTier: 'WorkflowStandard'
     isReserved: false

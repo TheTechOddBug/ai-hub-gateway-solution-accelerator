@@ -13,7 +13,7 @@ param location string = resourceGroup().location
 param skuName string
 param skuFamily string
 param skuSize string
-param skuCapaicty int
+param skuCapacity int
 param skuTier string
 param isReserved bool
 
@@ -62,7 +62,7 @@ resource hostingPlan 'Microsoft.Web/serverfarms@2024-04-01' = {
     tier: skuTier //'WorkflowStandard'
     family: skuFamily //'WS'
     size: skuSize //'WS1'
-    capacity: skuCapaicty //1
+    capacity: skuCapacity //1
   }
   kind: 'elastic'
   properties: {
