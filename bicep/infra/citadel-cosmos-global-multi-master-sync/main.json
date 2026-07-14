@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "gatewayImplementations": {
+      "value": [
+        {
+          "name": "gateway-se",
+          "subscriptionId": "00000000-0000-0000-0000-000000000000",
+          "resourceGroupName": "rg-aihub-se-prod",
+          "cosmosDbAccountName": "cosmos-aihub-se-prod",
+          "region": "swedencentral"
+        },
+        {
+          "name": "gateway-us",
+          "subscriptionId": "00000000-0000-0000-0000-000000000000",
+          "resourceGroupName": "rg-aihub-us-prod",
+          "cosmosDbAccountName": "cosmos-aihub-us-prod",
+          "region": "eastus2"
+        }
+      ]
+    },
+    "additionalWriteRegions": {
+      "value": [
+        "westeurope"
+      ]
+    },
+    "systemManagedFailover": {
+      "value": true
+    },
+    "isZoneRedundant": {
+      "value": false
+    }
+  }
+}
