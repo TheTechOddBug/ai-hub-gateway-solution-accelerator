@@ -21,6 +21,10 @@ param subscriptionName string
 @description('Subscription display name')
 param subscriptionDisplayName string
 
+@description('Optional explicit subscription primary key. When set (e.g., mirroring a contract onto an additional APIM gateway), the subscription is created with this exact primary key so keys stay consistent across gateways. When empty (default), APIM auto-generates the key (existing behavior).')
+@secure()
+param explicitPrimaryKey string = ''
+
 var defaultPolicy = '<policies>\n  <inbound>\n    <base />\n    <rate-limit calls="60" renewal-period="60" />\n    <check-header name="Ocp-Apim-Subscription-Key" failed-check-httpcode="401" failed-check-error-message="Subscription key required" />\n  </inbound>\n  <backend>\n    <base />\n  </backend>\n  <outbound>\n    <base />\n  </outbound>\n  <on-error>\n    <base />\n  </on-error>\n</policies>'
 
 resource apim 'Microsoft.ApiManagement/service@2024-05-01' existing = {
@@ -58,11 +62,13 @@ resource policy 'Microsoft.ApiManagement/service/products/policies@2024-05-01' =
 resource sub 'Microsoft.ApiManagement/service/subscriptions@2024-05-01' = {
   name: subscriptionName
   parent: apim
-  properties: {
+  properties: union({
     displayName: subscriptionDisplayName
     scope: product.id
     state: 'active'
-  }
+  }, empty(explicitPrimaryKey) ? {} : {
+    primaryKey: explicitPrimaryKey
+  })
 }
 
 // first API path for endpoint URL construction
