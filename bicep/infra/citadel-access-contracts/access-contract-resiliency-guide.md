@@ -164,14 +164,9 @@ In addition to all existing outputs (unchanged), the following additive outputs 
 
 ## 🔄 Key rotation
 
-The explicit primary key placed on additional gateways is **copied from the primary at deployment time**. It does **not** auto-synchronize afterward. To rotate:
+For **zero-downtime subscription key rotation** — including how both keys are kept in sync across all mirrored gateways — see the dedicated [Access Contract Key Rotation Guide](./access-contract-key-rotation-guide.md).
 
-1. Rotate (regenerate) the subscription primary key on the **primary** gateway.
-2. **Re-run the same deployment** (`az deployment sub create` with the same `.bicepparam`).
-
-The redeploy re-reads the primary key and re-applies it to every additional gateway, and refreshes the values stored in all additional Key Vaults and Foundry connections. Because the deployment is idempotent, this is safe to repeat.
-
-> Tip: automate the "rotate → redeploy" step in your pipeline so all gateways stay in sync.
+In a multi-gateway contract, the primary gateway owns both keys and syncs **both** the primary and secondary keys verbatim to every additional gateway, so a client uses the same active key regardless of which gateway serves the request. The 3-step rotation flow (switch → confirm → regenerate) works across all gateways at once.
 
 ---
 

@@ -412,6 +412,33 @@ param additionalKeyVaults = []
 param additionalFoundries = []
 
 // ============================================================================
+// OPTIONAL: Zero-downtime Key Rotation
+// ============================================================================
+// All parameters below are OPTIONAL. Defaults (usePrimaryKey=true,
+// keyRotationEnabled=false) reproduce the existing behavior exactly (primary
+// key active, nothing regenerated). Use the 3-step flow to rotate a key with
+// no downtime: (1) switch consumers to the standby key, (2) confirm they are
+// healthy, (3) regenerate the now non-active key.
+//
+// For full guidance see: ./access-contract-key-rotation-guide.md
+// ----------------------------------------------------------------------------
+
+// Which subscription key is ACTIVE (handed to consumers via Key Vault / Foundry
+// / additional gateways). true = primary (default), false = secondary.
+// Set to false as step 1 of rotation to move all services onto the secondary
+// key while the primary remains valid (no downtime).
+param usePrimaryKey = true
+
+// When true, the NON-active key is regenerated (its old value is invalidated).
+// Enable this ONLY as the final rotation step, after consumers are confirmed
+// healthy on the active key.
+param keyRotationEnabled = false
+
+// Optional explicit rotation key for deterministic re-runs. Empty (default) =
+// a fresh 64-char key is auto-generated on each rotation deployment.
+param rotationKeyOverride = ''
+
+// ============================================================================
 // DEPLOYMENT NOTES
 // ============================================================================
 // Prerequisites:

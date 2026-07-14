@@ -48,6 +48,22 @@ A single access contract can optionally be mirrored across **additional APIM gat
 
 ---
 
+## 🔑 Zero-downtime Key Rotation (optional)
+
+Rotate a use case's APIM subscription key **without any service interruption** using a simple, deliberate **3-step** flow — across the primary gateway and every mirrored gateway, Key Vault, and Foundry connection.
+
+Each subscription has **two keys** (primary + secondary), both always valid. The contract hands consumers one **active** key and rotates the other:
+
+- 🔀 **Switch** (`usePrimaryKey=false`): push the secondary key everywhere while the primary stays valid — no downtime.
+- ✅ **Confirm**: use-case owners verify their apps are healthy on the new key.
+- ♻️ **Rotate** (`usePrimaryKey=false` + `keyRotationEnabled=true`): regenerate the now non-active key, invalidating the old value.
+
+> ✅ **Fully backward compatible** — defaults (`usePrimaryKey=true`, `keyRotationEnabled=false`) reproduce existing behavior exactly. ARM has no native "regenerate" action, so the non-active key is regenerated **declaratively** by assigning a fresh value, which also keeps keys in sync across all gateways.
+
+👉 See the [Key Rotation Guide](./access-contract-key-rotation-guide.md) for the full step-by-step procedure, secondary-key rotation, multi-gateway behavior, verification, and troubleshooting.
+
+---
+
 ## Deployment quick reference
 
 > For a condensed cheat-sheet of the folder conventions and deployment command, see the [Quick Reference Guide](./contract-quick-reference-guide.md).
@@ -211,6 +227,12 @@ citadel-access-contracts/
 | `additionalApimGateways` | array | ❌ | Additional APIM gateways to mirror the contract into, reusing the primary key (default: `[]`) | `[{ subscriptionId, resourceGroupName, name }]` |
 | `additionalKeyVaults` | array | ❌ | Additional Key Vaults for endpoint + shared key, with `endpointSource` selector (default: `[]`) | `[{ subscriptionId, resourceGroupName, name, endpointSource }]` |
 | `additionalFoundries` | array | ❌ | Additional Foundry instances for APIM connections, with `endpointSource` selector (default: `[]`) | `[{ subscriptionId, resourceGroupName, accountName, projectName, endpointSource }]` |
+
+> **Key Rotation**: Zero-downtime subscription key rotation is controlled by the optional `usePrimaryKey` (default `true`) and `keyRotationEnabled` (default `false`) parameters. Defaults preserve existing behavior. See the [Key Rotation Guide](./access-contract-key-rotation-guide.md).
+
+| `usePrimaryKey` | bool | ❌ | Which subscription key is active (handed to consumers). `true` = primary (default), `false` = secondary. See [Key Rotation Guide](./access-contract-key-rotation-guide.md) | `true` or `false` |
+| `keyRotationEnabled` | bool | ❌ | Regenerate the non-active key, invalidating its old value (default: `false`) | `true` or `false` |
+| `rotationKeyOverride` | string | ❌ | Explicit rotation key value for deterministic re-runs (default: `''` = auto-generate) | `<64-char key>` |
 
 
 #### Service Code mapping
