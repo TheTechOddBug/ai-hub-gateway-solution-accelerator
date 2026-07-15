@@ -17,6 +17,25 @@ This complements:
 
 ---
 
+## Prerequisites
+
+It is critical to configure the Logic Apps in the secondary regions to the following:
+
+### `llm-usage-ingestion` workflow
+
+You must update 3 tasks to use a different `Export-Config` id (which tracks the last time the workflow exported usage data to Cosmos DB). This ensures that each region's workflow does not overwrite the other region's usage data.
+
+Below are the screenshots of the three tasks that need to be updated (you can increment instead of `002`, e.g., `003`, `004`, etc. for additional regions):
+
+This is the task that checks existing exports:
+![llm-usage-ingestion workflow task 1](../../../assets/logic-app-global-setup-config-1.png)
+
+This is the one that creates the export for the first time:
+![llm-usage-ingestion workflow task 3](../../../assets/logic-app-global-setup-config-3.png)
+
+This is the task that updates the export for subsequent runs:
+![llm-usage-ingestion workflow task 2](../../../assets/logic-app-global-setup-config-2.png)
+
 ## What this module updates
 
 For every gateway implementation you provide, the module updates the existing Cosmos DB account to:
