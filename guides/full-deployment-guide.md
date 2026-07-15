@@ -1009,7 +1009,7 @@ Visit the [Deployment Troubleshooting Guide](./#) for common issues and resoluti
   - [Citadel Access Contracts](./citadel-access-contracts.md)
 
 - **Deploy LLM Backends**
-   - [Onboard Existing LLMs](./LLM-Backend-Onboarding-Guide.md)
+   - [Onboard Existing LLMs](../bicep/infra/llm-backend-onboarding/README.md)
    - [LLM Access Guide](./llm-access-guide.md)
 
 ---
