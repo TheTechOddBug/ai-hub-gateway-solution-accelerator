@@ -54,7 +54,7 @@ param existingLogAnalyticsSubscriptionId string = ''
 param apimApplicationInsightsDashboardName string = ''
 
 @description('Name of the Application Insights dashboard for Function/Logic App. Leave blank to use default naming conventions.')
-param funcAplicationInsightsDashboardName string = ''
+param funcApplicationInsightsDashboardName string = ''
 
 @description('Name of the Application Insights dashboard for Function/Logic App. Leave blank to use default naming conventions.')
 param foundryApplicationInsightsDashboardName string = ''
@@ -830,7 +830,7 @@ module monitoring './modules/monitor/monitoring.bicep' = {
     apimApplicationInsightsName: !empty(apimApplicationInsightsName) ? apimApplicationInsightsName : '${abbrs.insightsComponents}apim-${resourceToken}'
     apimApplicationInsightsDashboardName: !empty(apimApplicationInsightsDashboardName) ? apimApplicationInsightsDashboardName : '${abbrs.portalDashboards}apim-${resourceToken}'
     functionApplicationInsightsName: !empty(funcApplicationInsightsName) ? funcApplicationInsightsName : '${abbrs.insightsComponents}func-${resourceToken}'
-    functionApplicationInsightsDashboardName: !empty(funcAplicationInsightsDashboardName) ? funcAplicationInsightsDashboardName : '${abbrs.portalDashboards}func-${resourceToken}'
+    functionApplicationInsightsDashboardName: !empty(funcApplicationInsightsDashboardName) ? funcApplicationInsightsDashboardName : '${abbrs.portalDashboards}func-${resourceToken}'
     foundryApplicationInsightsName: !empty(foundryApplicationInsightsName) ? foundryApplicationInsightsName : '${abbrs.insightsComponents}aif-${resourceToken}'
     foundryApplicationInsightsDashboardName: !empty(foundryApplicationInsightsDashboardName) ? foundryApplicationInsightsDashboardName : '${abbrs.portalDashboards}aif-${resourceToken}'
     vNetName: useExistingVnet ? vnetExisting.outputs.vnetName : vnet.outputs.vnetName
