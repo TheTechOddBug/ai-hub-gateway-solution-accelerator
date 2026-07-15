@@ -22,8 +22,8 @@ Notes:
 
 | Category | Resources Updated |
 |---|---|
-| **Policy Fragments** | All static fragments (auth, usage, throttling, PII, AI Foundry, Unified AI) and dynamic LLM fragments (backend pools, authorization, target routing, model access) |
-| **APIs** | Universal LLM API, Azure OpenAI API, Unified AI Wildcard API, OpenAI Realtime WebSocket API — including OpenAPI specs, API-level policies, and operation-level policies |
+| **Policy Fragments** | All static fragments (auth, usage, throttling, PII, AI Foundry, Unified AI) and dynamic LLM fragments (backend pools, authorization, target routing, model access, and the `backend-contract` routing contract) |
+| **APIs** | Universal LLM API, Azure OpenAI API, Unified AI Wildcard API, OpenAI Realtime WebSocket API, and the Release Version API (`GET /version` + `GET /version/backend-contract`) — including OpenAPI specs, API-level policies, and operation-level policies |
 | **LLM Backends** | Backend definitions, backend pools, and associated policy fragments for dynamic model routing |
 | **Named Values** | UAMI client ID, PII service URL/key, Content Safety URL, JWT authentication values (TenantId, AppRegistrationId, Issuer, OpenIdConfigUrl) |
 | **Logging / Diagnostics** | APIM-level Application Insights diagnostic configuration, per-API Azure Monitor diagnostic configuration, and optional creation of the `azuremonitor` logger + diagnostic settings to an existing Log Analytics workspace |

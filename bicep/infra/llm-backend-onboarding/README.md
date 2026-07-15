@@ -22,6 +22,17 @@ This package enables dynamic LLM backend routing without modifying APIM policies
 | **Get Available Models Fragment** | Returns available model deployments with capabilities (similar to Azure Cognitive Services API) |
 | **Metadata Config Fragment** | Centralized model routing config for the Unified AI API — always deployed with backend onboarding to stay in sync |
 | **Resolve Model Alias Fragment** | Resolves client-facing alias names (e.g. `adv-gpt` as an alias for gpt-5.2 and gpt-4.1) to actual underlying models — shared across Azure OpenAI, Universal LLM, and Unified AI APIs |
+| **Backend Contract Fragment** | `backend-contract` fragment returning the active routing contract as JSON: APIM target, full `llmBackendConfig` (per-model metadata), circuit breaker + session affinity configuration, model aliases, and derived pools. Regenerated on every onboarding run so the Release Version API `GET /version/backend-contract` operation always reflects the live contract |
+
+> [!NOTE]
+> **Backend Contract endpoint.** The primary accelerator deployment creates a **Release Version API**
+> with a `GET /version/backend-contract` operation. That operation returns its response through the
+> dynamically generated `backend-contract` policy fragment. Running this onboarding submodule
+> **refreshes that fragment** from your full `llmBackendConfig` (plus circuit breaker, session
+> affinity, and model alias settings), so the endpoint immediately reflects newly onboarded
+> backends/models — no change to the API definition is required. Inline `authConfig.secretValue`
+> entries are redacted (Key Vault references and named-value keys are preserved). See the
+> [Release Version Management Guide](../../../guides/release-version-management.md#backend-contract-endpoint).
 
 ## Prerequisites
 

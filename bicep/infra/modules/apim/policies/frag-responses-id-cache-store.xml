@@ -58,7 +58,7 @@
                             var userId = context.Variables.GetValueOrDefault<string>("user-id", subId);
                             return string.Concat(subId, "|", model, "|", userId);
                         }"
-                        duration="86400"
+                        duration="2592000"
                         caching-type="internal" />
 
                     <set-header name="x-aihub-response-id-cached" exists-action="override">
