@@ -25,14 +25,19 @@ Each notebook is self-contained with initialization, deployment, testing, visual
 
 ## Prerequisites
 
+> **First time running these notebooks?** Follow the [Validation Notebook Setup Guide](notebook-setup-guide.md) to create the repository's isolated `.venv`, install dependencies, select the correct VS Code kernel, and verify the notebook working directory.
+
 Before running any notebook, ensure the following are in place:
 
 - **Citadel Governance Hub** deployed ([Full Deployment Guide](../guides/full-deployment-guide.md) or [Quick Deployment Guide](../guides/quick-deployment-guide.md))
 - **Azure CLI** installed and authenticated (`az login`)
-- **Python 3.10+** with a virtual environment activated
-- **Dependencies** installed:
-  ```bash
-  pip install -r ../shared/requirements.txt
+- **Python 3.11** with the repository-root `.venv` selected as the notebook kernel
+- **Dependencies** installed into `.venv` from the repository root (Windows PowerShell):
+    ```powershell
+    py -3.11 -m venv .venv
+    .\.venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
+    .\.venv\Scripts\python.exe -m pip install -r .\validation\requirements.txt
+    .\.venv\Scripts\python.exe -m pip install ipykernel
   ```
 - **VS Code** with the Jupyter extension (recommended for running notebooks)
 
