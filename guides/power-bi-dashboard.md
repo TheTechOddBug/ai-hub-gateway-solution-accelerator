@@ -4,7 +4,7 @@ Power BI is a business analytics service by Microsoft. It provides interactive v
 
 In the Citadel Governance Hub (citadel-v1) implementation, Power BI is used to turn the **LLM usage telemetry** collected by the gateway into cost-attribution, chargeback, and FinOps reports. Usage records are streamed to Cosmos DB by the usage-ingestion pipeline and joined against a **model-pricing** reference table to calculate cost per product, model, backend, and application.
 
-![Power BI Usage Dashboard](../assets/powerbi-usage-dashboard.png)
+![Power BI Usage Dashboard](../assets/powerbi-usage-dashboard-citadel.png)
 
 ## What changed in citadel-v1
 
@@ -36,7 +36,7 @@ If you are coming from a previous version of the accelerator, the following chan
 
 The dashboard is built on top of two Cosmos DB containers:
 
-1. **ai-usage-container** — one document per LLM request, emitted by the gateway usage pipeline.
+1. **llm-usage-container** — one document per LLM request, emitted by the gateway usage pipeline.
 2. **model-pricing** — the reference table used to convert token counts into cost.
 
 ### LLM usage data model
@@ -190,8 +190,6 @@ How the `percentage` method works for this entry:
 
 The same technique applies to any fixed-cost service (reserved Azure AI Search, dedicated capacity, etc.): set `CalculationMethod` to `percentage`, put the flat monthly amount in `BaseCost`, and choose one usage measure as the distribution weight.
 
-![Percentage-based cost dashboard](../assets/power-bi-percentage-dashboad.png)
-
 ## Preparing the Power BI Dashboard
 
 Open [src/usage-reports/Citadel-Governance-Hub-Usage-Dashboard-V1.1-Incremental.pbix](../src/usage-reports/Citadel-Governance-Hub-Usage-Dashboard-V1.1-Incremental.pbix) in Power BI Desktop.
@@ -202,7 +200,7 @@ Because the report uses import mode, you should see sample data from a previousl
 
     ![Transform Data](../assets/power-bi-data-source-transform.png)
 
-2. Right-click the **ai-usage-container** query and select **Advanced Editor**.
+2. Right-click the **llm-usage-container** query and select **Advanced Editor**.
 
     ![Edit Data](../assets/power-bi-data-source-adv-editor.png)
 
@@ -220,15 +218,13 @@ Because the report uses import mode, you should see sample data from a previousl
 
 7. You should now see data from your Cosmos DB in the report.
 
-    ![Power BI Dashboard](../assets/power-bi-data-final.png)
+    ![Power BI Dashboard](../assets/powerbi-usage-dashboard-citadel.png)
 
 8. To pull a fresh copy of the data later, click **Refresh** in the Home tab.
 
 ### Verifying the data relationship
 
-The report joins **ai-usage-container** to **model-pricing** on the `deploymentName` column (many-to-one). If you added new pricing entries or renamed deployments, confirm the relationship is intact under **Modeling → Manage relationships**.
-
-![Power BI Relationship](../assets/powerbi-relationship.png)
+The report joins **llm-usage-container** to **model-pricing** on the `deploymentName` column (many-to-one). If you added new pricing entries or renamed deployments, confirm the relationship is intact under **Modeling → Manage relationships**.
 
 ## Activating custom dimensions
 
@@ -272,3 +268,51 @@ If a dimension has the same meaning across every use case, embed the default dir
 > **Note:** `llm-emit-token-metric` supports a limited number of custom dimensions. The two generic dimensions are provided precisely so you can carry organization-specific context without exceeding that limit. Keep dimension **cardinality** in mind — very high-cardinality values (like raw user IDs on high-traffic products) increase metric storage and query cost.
 
 Once populated, `customDimension1` and `customDimension2` flow through to Cosmos DB and become available as slicers and grouping columns in the Power BI report, exactly like `productName` and `deploymentName`.
+
+## Publishing to the Power BI Service and scheduling refresh
+
+Working with the `.pbix` in Power BI Desktop is ideal for development and one-off analysis, but it is **not** how the report should be consumed day to day. The **recommended production approach** is to publish the report to a **Power BI workspace on [PowerBI.com](https://app.powerbi.com)** and let the service keep it up to date automatically by syncing from Cosmos DB on a schedule through a **data gateway**.
+
+```mermaid
+flowchart LR
+    A[(Cosmos DB<br/>ai-usage + model-pricing)] --> GW[On-premises / VNet<br/>Data Gateway]
+    GW -->|daily scheduled + incremental refresh| SVC[Power BI Service<br/>Workspace dataset]
+    SVC --> R[Published report / dashboard]
+    R --> U[Business users & AI owners<br/>access via workspace RBAC]
+```
+
+### 1. Publish the report to a Power BI workspace
+
+From Power BI Desktop, sign in with your organizational account and use **Home → Publish** to upload the report to a dedicated workspace (for example, *AI Citadel Governance – Usage*). Use a workspace rather than *My workspace* so it can be governed and shared.
+
+📖 Reference: [Publish datasets and reports from Power BI Desktop](https://learn.microsoft.com/power-bi/create-reports/desktop-upload-desktop-files)
+
+### 2. Install and configure a data gateway
+
+The dataset imports data from **Azure Cosmos DB**, so the Power BI Service needs a **data gateway** to reach it during scheduled refresh:
+
+- Use an **[on-premises data gateway (standard mode)](https://learn.microsoft.com/power-bi/connect-data/service-gateway-onprem)** installed on a VM that has network access to Cosmos DB, **or**
+- Use a **[virtual network (VNet) data gateway](https://learn.microsoft.com/data-integration/vnet/overview)** when Cosmos DB is locked down to a private endpoint / VNet (no VM to manage).
+
+After the gateway is installed, in the workspace dataset **Settings → Gateway and cloud connections**, map the Cosmos DB data source to the gateway and supply its connection credentials.
+
+### 3. Enable incremental refresh and a daily schedule
+
+The provided template (`Citadel-Governance-Hub-Usage-Dashboard-V1.1-Incremental.pbix`) is designed for **incremental refresh** — only new/changed usage partitions are refreshed instead of reloading the full history, which keeps refreshes fast and cost-efficient as usage grows.
+
+1. Confirm the incremental refresh policy on the **llm-usage-container** table (configured via the `RangeStart` / `RangeEnd` parameters in Power BI Desktop before publishing).
+2. In the workspace, open the dataset **Settings → Refresh** and set a **scheduled refresh** (a **daily** cadence is recommended for cost-attribution/FinOps reporting).
+
+📖 References: [Incremental refresh overview](https://learn.microsoft.com/power-bi/connect-data/incremental-refresh-overview) · [Configure scheduled refresh](https://learn.microsoft.com/power-bi/connect-data/refresh-scheduled-refresh)
+
+### 4. Manage access with workspace RBAC
+
+Control who can view or edit the report through **Power BI workspace roles** (Admin, Member, Contributor, Viewer). Grant **Viewer** to the business users and **AI owners** who consume the dashboard, and reserve Admin/Member for the platform/reporting team. Prefer assigning roles to **Microsoft Entra ID security groups** rather than individuals for easier governance, and combine with [row-level security (RLS)](https://learn.microsoft.com/power-bi/enterprise/service-admin-rls) if different teams should only see their own products/use cases.
+
+📖 Reference: [Roles in workspaces in Power BI](https://learn.microsoft.com/power-bi/collaborate-share/service-roles-new-workspaces)
+
+## A starting point, not a finished product
+
+> **Important:** the dashboard shipped with this accelerator is a **starting point** — a reference model that demonstrates how gateway usage telemetry can be turned into cost-attribution and FinOps insights. It is **not** intended to be the final reporting solution.
+
+Every organization has different reporting needs, KPIs, and audiences. Designing and maintaining the dashboards that represent your specific **business requirements** and serve your **AI owners, FinOps, and platform stakeholders** is the customer's responsibility. Treat the provided model and visuals as a foundation to **extend, restyle, and adapt** — add your own measures, slicers (including the custom dimensions above), and pages to match how your organization governs and charges back AI consumption.
