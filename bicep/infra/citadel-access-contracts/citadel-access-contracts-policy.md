@@ -764,18 +764,6 @@ When `piiStateSavingEnabled` is set to `"true"`, the `pii-state-saving` fragment
 
 >**NOTE:** For detailed implementation information and advanced scenarios, see [PII Masking Guide](../../../guides/pii-masking-apim.md).
 
-## Examples of Applying Policies
-
-TBD
-
-### HR PII Support Agent Access Contract Policy
-
-TBD
-
-### Retail Shopping Assistant Access Contract Policy
-
-TBD
-
 ## Extending default policies
 
 You can extend the out-of-the-box policies by leveraging APIM extensive policy expressions and capabilities.
