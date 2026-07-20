@@ -168,6 +168,68 @@ Standard setup is already included in the default policies, but you can customiz
 
 >NOTE: The above policy fragment assumes that the client application is passing `x-app-id`, `x-sub-agent-id` and `x-enduser-id` headers in the request. You can modify the header names as per your requirements or use different approach to set these variables.
 
+### LLM Usage Custom Dimensions Policy
+
+The two custom dimensions (`customDimension1` and `customDimension2`) are generic, free-form tracking fields that flow all the way through to Cosmos DB and become slicers / grouping columns in the [Power BI Dashboard](../../../guides/power-bi-dashboard.md#activating-custom-dimensions). Use them to attribute usage against any organization-specific context — for example **end-user ID**, **session ID**, **sub-agent ID**, **cost center**, **department**, or **channel**.
+
+By default both dimensions resolve to `NA`. They only carry meaningful values once you set the matching context variables. You can configure them **per access contract** (recommended for use-case-specific context) or **globally** in the usage policy fragment (for context that is identical across all use cases).
+
+#### Per Access Contract (use-case specific)
+
+Set the `customDimension1` / `customDimension2` variables in the **inbound** section of the product policy. This is the recommended approach because each use case decides what business context matters and how to source it (headers, JWT claims, subscription attributes, etc.).
+
+**Source from client headers:**
+
+```xml
+<inbound>
+    <base />
+    <!-- Track the calling end user (customDimension1) -->
+    <set-variable name="customDimension1" value="@(
+        context.Request.Headers.GetValueOrDefault("x-enduser-id", "anonymous-enduser")
+    )" />
+
+    <!-- Track the conversation/session (customDimension2) -->
+    <set-variable name="customDimension2" value="@(
+        context.Request.Headers.GetValueOrDefault("x-session-id", "NA-session")
+    )" />
+</inbound>
+```
+
+**Source from a validated JWT claim** (for example, attribute usage to the calling identity or a tenant claim after `security-handler` runs):
+
+```xml
+<inbound>
+    <base />
+    <set-variable name="jwtRequired" value="true" />
+
+    <!-- Attribute usage to the department claim carried in the token -->
+    <set-variable name="customDimension1" value="@{
+        var jwt = context.Request.Headers.GetValueOrDefault("Authorization", "")?.Split(' ').LastOrDefault()?.AsJwt();
+        return jwt?.Claims.GetValueOrDefault("department", "unknown-dept") ?? "unknown-dept";
+    }" />
+</inbound>
+```
+
+**Static value per use case** (useful to tag a fixed cost center to a contract):
+
+```xml
+<inbound>
+    <base />
+    <set-variable name="customDimension2" value="cost-center-4711" />
+</inbound>
+```
+
+| Variable | Emitted as dimension | Typical source |
+|----------|----------------------|----------------|
+| `customDimension1` | `customDimension1` | End-user ID, sub-agent ID, department, channel |
+| `customDimension2` | `customDimension2` | Session ID, cost center, tenant ID, request category |
+
+#### Global default (all use cases)
+
+If a dimension has the same meaning everywhere, embed the default directly in the `frag-set-llm-usage.xml` policy fragment instead of repeating it in every access contract. Set the variable before the `<llm-emit-token-metric>` block (or change the fallback in the `<dimension>` element). A per-product `set-variable` still overrides the global default for that specific access contract.
+
+> **NOTE:** `llm-emit-token-metric` supports a limited number of custom dimensions, which is why exactly two generic dimensions are exposed. Be mindful of **cardinality** — assigning very high-cardinality values (such as raw user IDs on high-traffic products) increases metric storage and query cost. For high-cardinality tracking, prefer `appId` or aggregate the value (e.g., hash or bucket) before emitting it.
+
 ### Configuring Alerts Policy
 
 Collecting throttling events can help in setting up alerts in Application Insights. You can configure the following variables in the product policy outbound section to customize the throttling event details:
