@@ -560,7 +560,7 @@ When a required role is missing, the policy returns:
 
 AI Citadel Gateway supports PII processing using built-in policy fragments that leverage Azure AI Language Service for detection and anonymization. This allows you to protect sensitive data when sending requests to LLM backends \u2014 either by **anonymizing** PII before it reaches the backend, or by **rejecting (blocking)** any request that contains PII outright.
 
->**NOTE:** PII processing has a limit of **5,120** characters for the payload being analyzed by Azure Language service (applies only to the inbound request content not the generated content). If the content exceeds this limit, gateway may return a `400 Bad Request` error. To handle this, you can implement a custom policy to split the input content into smaller chunks before passing it to the PII processing fragments.
+>**NOTE:** Azure AI Language Service enforces a **5,120-character-per-document** limit for PII detection (applies only to the inbound request content, not the generated response). The `pii-anonymization` fragment now handles larger payloads **automatically** by splitting the input into overlapping chunks, batching up to 5 chunks per Language Service request, and analyzing across multiple requests (up to ~125,000 characters total). Detection runs on the chunks only — the request body is never reassembled from redacted pieces — so the original request structure is fully preserved. Tune this behavior with the optional `piiMaxChunkSize` and `piiChunkOverlap` variables (see the configuration table below). For full details see the [PII Masking Guide](../../../guides/pii-masking-apim.md#handling-large-documents-chunking--batching).
 
 #### Available PII Policy Fragments
 
@@ -582,6 +582,8 @@ The following variables can be set in your product policy to configure PII proce
 | `piiEntityCategoryExclusions` | No | `""` | Comma-separated list of PII categories to exclude (e.g., `"PersonType"`) |
 | `piiDetectionLanguage` | No | `"en"` | Language code for detection. Use `"auto"` for multilingual content |
 | `piiRegexPatterns` | No | `""` | JSON array of custom regex patterns for additional PII detection |
+| `piiMaxChunkSize` | No | `"5000"` | Max characters per chunk sent to the Language Service (clamped to the `500`–`5120` service range). Only applies when the input exceeds one chunk |
+| `piiChunkOverlap` | No | `"250"` | Overlap characters between consecutive chunks to catch PII straddling a chunk boundary (clamped to `≤ piiMaxChunkSize / 2`) |
 | `piiInputContent` | Yes | - | The content to be anonymized (typically the request body) |
 | `piiStateSavingEnabled` | No | `"false"` | Set to `"true"` to enable Event Hub logging |
 
