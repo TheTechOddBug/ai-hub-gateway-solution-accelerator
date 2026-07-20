@@ -364,6 +364,7 @@ Master AI Citadel Governance Hub implementation and operations with our detailed
 |-------|-------------|
 | [**🆕 Quick Deployment Guide**](./guides/quick-deployment-guide.md) | Fast deployment for non-production environments |
 | [**🆕 Full Deployment Guide**](./guides/full-deployment-guide.md) | Comprehensive guide for dev, staging, and production |
+| [**🆕 Post-Deployment Guide**](./guides/post-deployment-guide.md) | Day-2 activities: onboard backends & use cases, enable Entra ID, activate Power BI, go multi-region, and upgrade the gateway |
 | [**🆕 Parameters Deployment Guide**](./guides/parameters-usage-guide.md) | Comprehensive Bicep parameter file usage |
 | [**🆕 Network Approach Guide**](./guides/network-approach.md) | Detailed networking approach for Citadel Governance Hub deployment |
 

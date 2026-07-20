@@ -1,26 +1,40 @@
 # 🏗️ Full Deployment Guide - All Environments
 
-This comprehensive guide covers deploying AI Citadel Governance Hub across **development, staging, and production** environments with enterprise-grade configuration, networking, and governance.
+This guide covers deploying the AI Citadel Governance Hub across **development, staging, and production** environments with enterprise-grade configuration, networking, and governance.
 
 For quick non-production deployments, see the [Quick Deployment Guide](./quick-deployment-guide.md).
+
+### How to use this guide
+
+Deploying the hub is a three-phase journey. This guide covers **Phase 1 (Plan)** and **Phase 2 (Deploy)**; day-2 configuration lives in the [Post-Deployment Guide](./post-deployment-guide.md).
+
+| Phase | You do | Primary references |
+|-------|--------|--------------------|
+| **1. Plan** | Pick region(s), network model, SKUs, resiliency/BC-DR posture | [Sizing Guide](./citadel-sizing-guide.md) · [Resiliency Guide](./resiliency-guide.md) · [BC/DR Guide](./business-continuity-dr-guide.md) |
+| **2. Deploy** | Provision the landing zone (`azd up`) | This guide |
+| **3. Operate** | Onboard backends & use cases, enable auth, activate reporting, upgrade | [Post-Deployment Guide](./post-deployment-guide.md) |
+
+> 💡 **Complete the [Deployment Decisions Checklist](#-deployment-decisions-checklist) first.** Every decision maps to a parameter in [`main.bicepparam`](../bicep/infra/main.bicepparam), so a completed checklist becomes your deployment configuration.
 
 ---
 
 ## 📋 Table of Contents
 
 1. [Prerequisites](#-prerequisites)
-2. [Deployment Preparation](#-deployment-preparation)
-   - [Parameter Files Strategy](#1-parameter-files-strategy)
-   - [Resource Naming & Tagging](#2-resource-naming--tagging)
-   - [Network Architecture](#3-network-architecture)
-   - [AI Model Deployment](#4-ai-model-deployment-optional)
-   - [Log Analytics Strategy](#5-log-analytics-strategy)
-   - [Inference API Diagnostic Logging](#6-inference-api-diagnostic-logging)
-   - [Security & Compliance](#7-security--compliance)
-3. [Source Control Strategy](#-source-control-strategy)
+2. [Deployment Decisions Checklist](#-deployment-decisions-checklist)
+3. [Deployment Preparation](#-deployment-preparation)
+   - [Sizing & SKU Selection](#1-sizing--sku-selection)
+   - [Parameter Files Strategy](#2-parameter-files-strategy)
+   - [Resource Naming & Tagging](#3-resource-naming--tagging)
+   - [Network Architecture](#4-network-architecture)
+   - [Resiliency & Business Continuity](#5-resiliency--business-continuity)
+   - [AI Model Deployment](#6-ai-model-deployment-optional)
+   - [Log Analytics Strategy](#7-log-analytics-strategy)
+   - [Inference API Diagnostic Logging](#8-inference-api-diagnostic-logging)
+   - [Security & Compliance](#9-security--compliance)
 4. [Deployment Execution](#-deployment-execution)
-5. [Environment-Specific Configurations](#-environment-specific-configurations)
-6. [Post-Deployment Validation](#-post-deployment-validation)
+5. [Post-Deployment Validation](#-post-deployment-validation)
+6. [Next Steps: Operate the Hub](#-next-steps-operate-the-hub)
 7. [Troubleshooting](#-troubleshooting)
 
 ---
@@ -36,10 +50,16 @@ For quick non-production deployments, see the [Quick Deployment Guide](./quick-d
 | **Resource Providers** | All required providers registered (see below) |
 | **Service Quotas** | Verified quotas for LLMs, CosmosDB and other elements |
 
-## Deployment Decisions Checklist
+## 📝 Deployment Decisions Checklist
 
-Use the below checklist to plan your deployment configuration:
+Work through this checklist first — each decision maps directly to a parameter in [`main.bicepparam`](../bicep/infra/main.bicepparam). The linked guides help you choose.
 
+- [ ] **Sizing (T-shirt size → SKUs)** — pick Small / Medium / Large per environment → [Sizing Guide](./citadel-sizing-guide.md)
+  - [ ] Development (cost-optimized SKUs)
+  - [ ] Staging (production SKUs, reduced capacity)
+  - [ ] Production (production SKUs, full capacity)
+- [ ] **Resiliency posture** — circuit breaker, session affinity, failover, error handling → [Resiliency Guide](./resiliency-guide.md)
+- [ ] **Business continuity / DR** — single-region, multi-region, or Premium multi-region; RTO/RPO targets → [BC/DR Guide](./business-continuity-dr-guide.md)
 - [ ] Subscription allocation
   - [ ] New subscription
   - [ ] Existing subscription
@@ -67,10 +87,6 @@ Use the below checklist to plan your deployment configuration:
 - [ ] Microsoft Foundry Model Deployment
   - [ ] Deploy models as part of AI Citadel deployment (specify models/regions)
   - [ ] None (use existing deployments that will be onboarded later)
-- [ ] Services SKUs & Capacities per Environment
-  - [ ] Development (cost-optimized SKUs)
-  - [ ] Staging (production SKUs with reduced capacity)
-  - [ ] Production (production SKUs with full capacity)
 - [ ] Inference API Diagnostic Logging
   - [ ] Azure Monitor LLM log verbosity (enabled/disabled, message capture, max payload size)
   - [ ] Application Insights log headers and body capture size
@@ -157,7 +173,7 @@ az provider list --query "[?registrationState=='Registered'].namespace" -o table
 
 ## 🎯 Deployment Preparation
 
-Based on your choices in the [Deployment Decisions Checklist](#deployment-decisions-checklist), you can now prepare your deployment configuration.
+Based on your choices in the [Deployment Decisions Checklist](#-deployment-decisions-checklist), you can now prepare your deployment configuration.
 
 For source control, make sure you have a working directory linked to your source control repository.
 
@@ -182,7 +198,37 @@ Once you have the Infrastructure-as-Code files, proceed to configure your deploy
 
 You can perform the deployment using either `azd up` (recommended) or `az deployment sub create` commands.
 
-### 1. Parameter Files Strategy
+### 1. Sizing & SKU Selection
+
+Before touching parameter files, decide the **size** of each environment. The [Citadel Sizing Guide](./citadel-sizing-guide.md) uses a T-shirt model (Small / Medium / Large) tied to expected PTU throughput and SLA needs, and tells you exactly which SKUs to set.
+
+| T-shirt size | Fit | APIM SKU |
+|--------------|-----|----------|
+| **Small** | Dev / experimental, no SLA | Developer |
+| **Medium Classic** | Non-prod or minimum-prod with SLA, full network isolation | Premium |
+| **Medium v2** | Non-prod or minimum-prod with SLA | StandardV2 |
+| **Large** | Multi-zone production with SLA | Premium (multi-unit) |
+
+Once you have chosen a size, set the SKUs in your parameter file under the **`COMPUTE SKU & SIZE`** block:
+
+```bicep
+// ============================================================================
+// COMPUTE SKU & SIZE - SKUs and capacity settings for services
+// ============================================================================
+param apimSku = readEnvironmentVariable('APIM_SKU', 'StandardV2')
+param apimSkuUnits = int(readEnvironmentVariable('APIM_SKU_UNITS', '1'))
+param eventHubCapacityUnits = int(readEnvironmentVariable('EVENTHUB_CAPACITY', '1'))
+param cosmosDbRUs = int(readEnvironmentVariable('COSMOS_DB_RUS', '400'))
+param logicAppsSkuCapacityUnits = int(readEnvironmentVariable('LOGIC_APPS_SKU_CAPACITY_UNITS', '1'))
+param apicSku = readEnvironmentVariable('APIC_SKU', 'Free')
+param keyVaultSkuName = readEnvironmentVariable('KEY_VAULT_SKU_NAME', 'standard')
+```
+
+> 📐 **See the [Sizing Guide](./citadel-sizing-guide.md)** for the reference Azure pricing estimates behind each size and for scale-out guidance (adding APIM units).
+
+---
+
+### 2. Parameter Files Strategy
 
 AI Citadel Governance Hub uses **Bicep parameter files (.bicepparam)** for environment-specific configurations.
 
@@ -225,7 +271,7 @@ param enableAPICenter = true
 
 ---
 
-### 2. Resource Naming & Tagging
+### 3. Resource Naming & Tagging
 
 #### Naming Strategy
 
@@ -278,7 +324,7 @@ param tags = {
 
 ---
 
-### 3. Network Architecture
+### 4. Network Architecture
 
 #### Network Deployment Approaches
 
@@ -462,7 +508,28 @@ Detailed guide: [Bring Your Own Network](./network-approach.md)
 
 ---
 
-### 4. AI Model Deployment (Optional)
+### 5. Resiliency & Business Continuity
+
+Resiliency is a **planning decision**, not a post-deploy afterthought — the topology and SKU you pick here determine what recovery objectives you can meet. Two complementary guides cover the two layers:
+
+| Layer | What it protects | Guide |
+|-------|------------------|-------|
+| **Backend resiliency** | Keeping LLM traffic flowing when a *backend* throttles or fails — circuit breaking, session affinity, automated failover, structured error handling. | [Resiliency Guide](./resiliency-guide.md) |
+| **Hub business continuity** | Keeping the *gateway itself* available when a service, zone, or whole region fails — multi-region topologies, global routing, Cosmos DB multi-write. | [BC/DR Guide](./business-continuity-dr-guide.md) |
+
+> **Golden rule:** a resilient gateway in front of a fragile backend still fails, and a resilient backend behind a single-region gateway is unreachable when that region goes down. **Plan both.**
+
+**Decisions to lock in now (they influence SKU, region, and network choices above):**
+
+- [ ] **BC/DR topology** — single-region + zone redundancy, multiple full deployments (recommended, works on StandardV2+), or APIM Premium multi-region. See [Deployment topologies](./business-continuity-dr-guide.md#3-deployment-topologies).
+- [ ] **RTO / RPO / RLO targets** per use case (drives topology). See [Planning your BC/DR strategy](./business-continuity-dr-guide.md#2-planning-your-bcdr-strategy).
+- [ ] **Global usage consolidation** — if going multi-region, plan Cosmos DB multi-write via [`citadel-cosmos-global-multi-master-sync`](../bicep/infra/citadel-cosmos-global-multi-master-sync/README.md) (configured post-deployment).
+
+> Circuit breaker, session affinity, and failover defaults are applied automatically during **backend onboarding** (a post-deployment step) — you tune them there. See the [Post-Deployment Guide](./post-deployment-guide.md).
+
+---
+
+### 6. AI Model Deployment (Optional)
 
 #### Microsoft Foundry Configuration
 
@@ -585,7 +652,7 @@ param aiFoundryModelsConfig = [] // No models will be deployed as part of AI Cit
 
 ---
 
-### 5. Log Analytics Strategy
+### 7. Log Analytics Strategy
 
 #### Option 1: Create New Log Analytics Workspace
 
@@ -652,7 +719,7 @@ param existingLogAnalyticsSubscriptionId = '00000000-0000-0000-0000-000000000000
 
 ---
 
-### 6. Inference API Diagnostic Logging
+### 8. Inference API Diagnostic Logging
 
 AI Citadel configures **per-API diagnostic logging** on every inference API (Universal LLM API and Azure OpenAI API). Two diagnostic channels are provisioned:
 
@@ -793,7 +860,7 @@ param appInsightsLogSettings = {
 
 ---
 
-### 7. Security & Compliance
+### 9. Security & Compliance
 
 #### Entra ID Authentication
 
@@ -954,6 +1021,8 @@ azd up
 
 ## ✅ Post-Deployment Validation
 
+Confirm the landing zone provisioned correctly before moving on to configuration.
+
 ### Verify Resource Deployment
 
 ```bash
@@ -970,22 +1039,39 @@ az resource list \
 
 ### Validate Governance Hub functionality
 
-This repo includes set of validation NoteBooks under `/validation` folder.
+This repo includes a set of validation notebooks under the `/validation` folder:
 
-- [citadel-governance-hub-primary-tests.ipynb](../validation/citadel-governance-hub-primary-tests.ipynb): Initial discovery of the deployed governance hub and help in creating the first access contract.
-- [llm-backend-onboarding-runner.ipynb](../validation/llm-backend-onboarding-runner.ipynb): Onboard existing LLM backends & configure its routing to the governance hub and validate connectivity.
+- [citadel-governance-hub-primary-tests.ipynb](../validation/citadel-governance-hub-primary-tests.ipynb): Initial discovery of the deployed governance hub and help creating the first access contract.
+- [llm-backend-onboarding-runner.ipynb](../validation/llm-backend-onboarding-runner.ipynb): Onboard existing LLM backends, configure routing, and validate connectivity.
 
 ---
 
-## Deploy Citadel Governance Hub updates
+## ➡️ Next Steps: Operate the Hub
 
-Once the initial deployment is completed, you can still further updates and enhancements of the governance hub by synchronizing your local repository `original branch` with the upstream changes, then you can create a `Pull-Request` to your environment-specific branch to merge the changes.
+The `main.bicep` deployment is the **initial implementation only**. All day-2 configuration — onboarding backends and use cases, enabling authentication, activating usage reporting, going multi-region, and upgrading the gateway to newer releases — is covered end-to-end in the:
+
+### 👉 [Post-Deployment Guide](./post-deployment-guide.md)
+
+At a glance, your next activities are:
+
+| Activity | Guide / Module |
+|----------|----------------|
+| Onboard LLM backends & routing (**Backend Contract**) | [llm-backend-onboarding](../bicep/infra/llm-backend-onboarding/README.md) · [LLM Access Guide](./llm-access-guide.md) |
+| Onboard use cases (**Access Contract**) | [citadel-access-contracts](../bicep/infra/citadel-access-contracts/README.md) |
+| Enable Entra ID (JWT) authentication | [entra-id-setup](../bicep/infra/entra-id-setup/README.md) · [Entra ID Auth](./entraid-auth-validation.md) |
+| Activate Power BI usage reporting | [Power BI Dashboard](./power-bi-dashboard.md) |
+| Go multi-region (Cosmos DB multi-write) | [citadel-cosmos-global-multi-master-sync](../bicep/infra/citadel-cosmos-global-multi-master-sync/README.md) · [BC/DR Guide](./business-continuity-dr-guide.md) |
+| Upgrade an existing gateway to a newer release | [APIM Gateway Upgrade](../bicep/infra/apim-gateway-upgrade/README.md) · [Release Version Management](./release-version-management.md) |
+| Enable PII detection / masking | [PII Masking](./pii-masking-apim.md) |
+| Configure alerts & throttling events | [Throttling Events Handling](./throttling-events-handling.md) |
+
+> **Keeping the repo current:** synchronize your local repository's `original` branch with the upstream accelerator, then open a Pull Request into your environment-specific branch to merge changes. To apply those changes to a *running* gateway, use the [APIM Gateway Upgrade](../bicep/infra/apim-gateway-upgrade/README.md) submodule rather than re-running `main.bicep` — see the [Post-Deployment Guide](./post-deployment-guide.md#6-upgrade-the-gateway-to-a-newer-release).
+
+---
 
 ## 🚨 Troubleshooting
 
 Visit the [Deployment Troubleshooting Guide](./#) for common issues and resolutions.
-
----
 
 ### Getting Help
 
@@ -993,25 +1079,4 @@ Visit the [Deployment Troubleshooting Guide](./#) for common issues and resoluti
 
 ---
 
-## 📚 Next Steps
-
-**After Successful Deployment:**
-
-- **Enable Security**
-   - [Entra ID Authentication](./entraid-auth-validation.md)
-   - [PII Detection](./pii-masking-apim.md)
-
-- **Set Up Monitoring**
-   - [Power BI Dashboard](./power-bi-dashboard.md)
-   - [Alert Configuration](./throttling-events-handling.md)
-
-- **Onboard Teams**
-  - [Citadel Access Contracts](./citadel-access-contracts.md)
-
-- **Deploy LLM Backends**
-   - [Onboard Existing LLMs](../bicep/infra/llm-backend-onboarding/README.md)
-   - [LLM Access Guide](./llm-access-guide.md)
-
----
-
-**Congratulations! Your AI Citadel Governance Hub is now deployed and ready for enterprise AI workloads.** 🎉
+**Congratulations! Your AI Citadel Governance Hub landing zone is deployed. Continue with the [Post-Deployment Guide](./post-deployment-guide.md) to onboard workloads and go live.** 🎉

@@ -168,9 +168,67 @@ Standard setup is already included in the default policies, but you can customiz
 
 >NOTE: The above policy fragment assumes that the client application is passing `x-app-id`, `x-sub-agent-id` and `x-enduser-id` headers in the request. You can modify the header names as per your requirements or use different approach to set these variables.
 
-### Semantic Cache Policy
+### LLM Usage Custom Dimensions Policy
 
-TBD
+The two custom dimensions (`customDimension1` and `customDimension2`) are generic, free-form tracking fields that flow all the way through to Cosmos DB and become slicers / grouping columns in the [Power BI Dashboard](../../../guides/power-bi-dashboard.md#activating-custom-dimensions). Use them to attribute usage against any organization-specific context — for example **end-user ID**, **session ID**, **sub-agent ID**, **cost center**, **department**, or **channel**.
+
+By default both dimensions resolve to `NA`. They only carry meaningful values once you set the matching context variables. You can configure them **per access contract** (recommended for use-case-specific context) or **globally** in the usage policy fragment (for context that is identical across all use cases).
+
+#### Per Access Contract (use-case specific)
+
+Set the `customDimension1` / `customDimension2` variables in the **inbound** section of the product policy. This is the recommended approach because each use case decides what business context matters and how to source it (headers, JWT claims, subscription attributes, etc.).
+
+**Source from client headers:**
+
+```xml
+<inbound>
+    <base />
+    <!-- Track the calling end user (customDimension1) -->
+    <set-variable name="customDimension1" value="@(
+        context.Request.Headers.GetValueOrDefault("x-enduser-id", "anonymous-enduser")
+    )" />
+
+    <!-- Track the conversation/session (customDimension2) -->
+    <set-variable name="customDimension2" value="@(
+        context.Request.Headers.GetValueOrDefault("x-session-id", "NA-session")
+    )" />
+</inbound>
+```
+
+**Source from a validated JWT claim** (for example, attribute usage to the calling identity or a tenant claim after `security-handler` runs):
+
+```xml
+<inbound>
+    <base />
+    <set-variable name="jwtRequired" value="true" />
+
+    <!-- Attribute usage to the department claim carried in the token -->
+    <set-variable name="customDimension1" value="@{
+        var jwt = context.Request.Headers.GetValueOrDefault("Authorization", "")?.Split(' ').LastOrDefault()?.AsJwt();
+        return jwt?.Claims.GetValueOrDefault("department", "unknown-dept") ?? "unknown-dept";
+    }" />
+</inbound>
+```
+
+**Static value per use case** (useful to tag a fixed cost center to a contract):
+
+```xml
+<inbound>
+    <base />
+    <set-variable name="customDimension2" value="cost-center-4711" />
+</inbound>
+```
+
+| Variable | Emitted as dimension | Typical source |
+|----------|----------------------|----------------|
+| `customDimension1` | `customDimension1` | End-user ID, sub-agent ID, department, channel |
+| `customDimension2` | `customDimension2` | Session ID, cost center, tenant ID, request category |
+
+#### Global default (all use cases)
+
+If a dimension has the same meaning everywhere, embed the default directly in the `frag-set-llm-usage.xml` policy fragment instead of repeating it in every access contract. Set the variable before the `<llm-emit-token-metric>` block (or change the fallback in the `<dimension>` element). A per-product `set-variable` still overrides the global default for that specific access contract.
+
+> **NOTE:** `llm-emit-token-metric` supports a limited number of custom dimensions, which is why exactly two generic dimensions are exposed. Be mindful of **cardinality** — assigning very high-cardinality values (such as raw user IDs on high-traffic products) increases metric storage and query cost. For high-cardinality tracking, prefer `appId` or aggregate the value (e.g., hash or bucket) before emitting it.
 
 ### Configuring Alerts Policy
 
@@ -243,15 +301,17 @@ The `set-response-headers` policy fragment injects `UAIG-*` response headers tha
 
 ### Content Safety Policy
 
-Content safety can be enforced at a gateway level using the built-in content safety policy. You can configure the content safety policy to block or flag content based on your organization's requirements.
+The [`llm-content-safety`](https://learn.microsoft.com/en-us/azure/api-management/llm-content-safety-policy) policy enforces content safety checks on large language model (LLM) requests (prompts) or responses (completions) by sending them to the Foundry AI Content Safety service. The policy can also enforce content safety checks on requests or responses for MCP tools or A2A Agent APIs managed in API Management.
 
->NOTE: Content Safety has a context input limit of **10K** characters. If the content to be evaluated exceeds this limit, the policy will return a 413 Payload Too Large error. To handle this, you can set up a custom policy to split longer input content before passing it to the content safety policy.
+You can configure the content safety policy to block or flag content based on your organization's requirements per use-case/access contract.
+
+>NOTE: Content Safety has a context input limit of **10K** characters. If the content to be evaluated exceeds this limit, the policy will return a 413 Payload Too Large error. To handle this, you can set up a `window-size` of a maximum of 10,000 in the policy configuration with optional `window-overlap-size` to control overlapping content between windows.
 
 ```xml
 <inbound>
     <!-- Content Safety Policy -->
     <!-- Failure to pass content safety will result in 403 error -->
-    <llm-content-safety backend-id="content-safety-backend" shield-prompt="true">
+    <llm-content-safety backend-id="content-safety-backend" shield-prompt="true" window-size="10000" window-overlap-size="200" enforce-on-completions="false">
         <!-- 0 is most restrictive and can be set up-to 7 -->
         <categories output-type="EightSeverityLevels">
             <category name="Hate" threshold="3" />
@@ -498,9 +558,9 @@ When a required role is missing, the policy returns:
 
 ### PII Handling Policy
 
-AI Citadel Gateway supports PII processing using built-in policy fragments that leverage Azure AI Language Service for detection and anonymization. This allows you to protect sensitive data when sending requests to LLM backends.
+AI Citadel Gateway supports PII processing using built-in policy fragments that leverage Azure AI Language Service for detection and anonymization. This allows you to protect sensitive data when sending requests to LLM backends \u2014 either by **anonymizing** PII before it reaches the backend, or by **rejecting (blocking)** any request that contains PII outright.
 
->**NOTE:** PII processing has a limit of **5,120** characters for the payload being analyzed by Azure Language service (applies only to the inbound request content not the generated content). If the content exceeds this limit, gateway may return a `400 Bad Request` error. To handle this, you can implement a custom policy to split the input content into smaller chunks before passing it to the PII processing fragments.
+>**NOTE:** Azure AI Language Service enforces a **5,120-character-per-document** limit for PII detection (applies only to the inbound request content, not the generated response). The `pii-anonymization` fragment now handles larger payloads **automatically** by splitting the input into overlapping chunks, batching up to 5 chunks per Language Service request, and analyzing across multiple requests (up to ~125,000 characters total). Detection runs on the chunks only — the request body is never reassembled from redacted pieces — so the original request structure is fully preserved. Tune this behavior with the optional `piiMaxChunkSize` and `piiChunkOverlap` variables (see the configuration table below). For full details see the [PII Masking Guide](../../../guides/pii-masking-apim.md#handling-large-documents-chunking--batching).
 
 #### Available PII Policy Fragments
 
@@ -516,11 +576,14 @@ The following variables can be set in your product policy to configure PII proce
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `piiAnonymizationEnabled` | Yes | - | Set to `"true"` to enable PII anonymization |
+| `piiAnonymizationEnabled` | Yes | - | Set to `"true"` to enable PII detection/anonymization |
+| `piiBlockingEnabled` | No | `"false"` | Set to `"true"` to reject (block) requests that contain PII instead of anonymizing them |
 | `piiConfidenceThreshold` | No | `"0.8"` | Minimum confidence score (0.0-1.0) for PII detection |
 | `piiEntityCategoryExclusions` | No | `""` | Comma-separated list of PII categories to exclude (e.g., `"PersonType"`) |
 | `piiDetectionLanguage` | No | `"en"` | Language code for detection. Use `"auto"` for multilingual content |
 | `piiRegexPatterns` | No | `""` | JSON array of custom regex patterns for additional PII detection |
+| `piiMaxChunkSize` | No | `"5000"` | Max characters per chunk sent to the Language Service (clamped to the `500`–`5120` service range). Only applies when the input exceeds one chunk |
+| `piiChunkOverlap` | No | `"250"` | Overlap characters between consecutive chunks to catch PII straddling a chunk boundary (clamped to `≤ piiMaxChunkSize / 2`) |
 | `piiInputContent` | Yes | - | The content to be anonymized (typically the request body) |
 | `piiStateSavingEnabled` | No | `"false"` | Set to `"true"` to enable Event Hub logging |
 
@@ -609,6 +672,120 @@ PII anonymization works in two phases:
 </outbound>
 ```
 
+#### PII Blocking (Request Rejection) Setup
+
+Instead of anonymizing PII, some access contracts must **reject** any request that contains PII outright. This is useful for strict compliance scenarios where no PII — even in anonymized form — should reach the backend LLM.
+
+Blocking reuses the `pii-anonymization` fragment purely for **detection**: the fragment populates the `piiMappings` variable with every PII entity it finds. If that collection contains any entries, the request is rejected with an HTTP `400 Bad Request` before it is forwarded to the backend.
+
+> **NOTE:** Blocking does not require a dedicated detection fragment — it relies on the same `pii-anonymization` fragment used for masking. The difference is that the anonymized body is discarded and the request is short-circuited when PII is present.
+
+##### Inbound Configuration
+
+```xml
+<inbound>
+    <base />
+    <!-- Enable PII Blocking -->
+    <set-variable name="piiBlockingEnabled" value="true" />
+
+    <choose>
+        <when condition="@(context.Variables.GetValueOrDefault<string>("piiBlockingEnabled") == "true")">
+
+            <!-- Configure PII detection settings -->
+            <set-variable name="piiAnonymizationEnabled" value="true" />
+            <set-variable name="piiConfidenceThreshold" value="0.75" />
+            <set-variable name="piiEntityCategoryExclusions" value="PersonType" />
+            <set-variable name="piiDetectionLanguage" value="en" />
+
+            <!-- Optional: custom regex patterns for domain-specific PII -->
+            <set-variable name="piiRegexPatterns" value="@{
+                var patterns = new JArray {
+                    new JObject {
+                        ["pattern"] = @"\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b",
+                        ["category"] = "CREDIT_CARD"
+                    },
+                    new JObject {
+                        ["pattern"] = @"\b[A-Z]{2}\d{6}[A-Z]\b",
+                        ["category"] = "PASSPORT_NUMBER"
+                    },
+                    new JObject {
+                        ["pattern"] = @"\b784-\d{4}-\d{7}-\d{1}\b",
+                        ["category"] = "EMIRATES_ID"
+                    }
+                };
+                return patterns.ToString();
+            }" />
+
+            <!-- Capture request body for PII processing -->
+            <set-variable name="piiInputContent" value="@(context.Request.Body.As<string>(preserveContent: true))" />
+
+            <!-- Run detection via the anonymization fragment (populates piiMappings) -->
+            <include-fragment fragment-id="pii-anonymization" />
+
+            <!-- Reject the request when any PII entity was detected -->
+            <choose>
+                <when condition="@{
+                    var mappings = context.Variables.GetValueOrDefault<string>("piiMappings", "[]");
+                    return JArray.Parse(mappings).Count > 0;
+                }">
+                    <return-response>
+                        <set-status code="400" reason="Bad Request" />
+                        <set-header name="Content-Type" exists-action="override">
+                            <value>application/json</value>
+                        </set-header>
+                        <set-body>@{
+                            var mappings = JArray.Parse(context.Variables.GetValueOrDefault<string>("piiMappings", "[]"));
+                            var categories = new HashSet<string>();
+                            foreach (var mapping in mappings) {
+                                var placeholder = mapping["placeholder"].ToString();
+                                var category = placeholder.TrimStart('<').Split('_')[0];
+                                categories.Add(category);
+                            }
+                            return new JObject(
+                                new JProperty("error", new JObject(
+                                    new JProperty("code", "PII_DETECTED"),
+                                    new JProperty("message", "Request blocked: Personal Identifiable Information (PII) detected in the request."),
+                                    new JProperty("detectedCategories", string.Join(", ", categories)),
+                                    new JProperty("entityCount", mappings.Count)
+                                ))
+                            ).ToString();
+                        }</set-body>
+                    </return-response>
+                </when>
+            </choose>
+        </when>
+    </choose>
+</inbound>
+```
+
+> **NOTE:** When blocking is enabled you should **not** add the outbound `pii-deanonymization` step — no anonymized content is ever forwarded to the backend, so there is nothing to restore.
+
+**Error Response Format:**
+
+When PII is detected, the request is rejected with an HTTP `400 Bad Request` and a structured JSON error listing the detected categories:
+
+```json
+{
+    "error": {
+        "code": "PII_DETECTED",
+        "message": "Request blocked: Personal Identifiable Information (PII) detected in the request.",
+        "detectedCategories": "Person, Email, PhoneNumber, InternationalBankingAccountNumber",
+        "entityCount": 4
+    }
+}
+```
+
+**Blocking vs. Anonymization:**
+
+| Behavior | Anonymization (`piiAnonymizationEnabled`) | Blocking (`piiBlockingEnabled`) |
+|----------|-------------------------------------------|----------------------------------|
+| PII detected in request | Replaced with placeholders and forwarded to backend | Request rejected with `400 Bad Request` |
+| Backend receives request | Yes (anonymized) | No |
+| Outbound deanonymization | Required to restore original values | Not applicable |
+| Use case | Protect PII while still allowing processing | Strict compliance — no PII may reach the backend |
+
+> **NOTE:** Use blocking when your compliance requirements prohibit any PII from being processed by backend services, even in anonymized form. A working reference implementation is available in the `compliance-piiblocking` access contract.
+
 #### Custom Regex Patterns
 
 Extend Azure AI Language Service NLP detection with custom regex patterns for domain-specific PII:
@@ -650,18 +827,6 @@ When `piiStateSavingEnabled` is set to `"true"`, the `pii-state-saving` fragment
 - Content length metrics
 
 >**NOTE:** For detailed implementation information and advanced scenarios, see [PII Masking Guide](../../../guides/pii-masking-apim.md).
-
-## Examples of Applying Policies
-
-TBD
-
-### HR PII Support Agent Access Contract Policy
-
-TBD
-
-### Retail Shopping Assistant Access Contract Policy
-
-TBD
 
 ## Extending default policies
 
