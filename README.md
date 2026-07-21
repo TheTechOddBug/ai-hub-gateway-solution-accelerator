@@ -12,13 +12,13 @@
 
 ## 🚀 Overview
 
-Citadel Governance Hub is an **enterprise-grade AI landing zone** that provides a centralized, governable, and observable control plane for AI consumption across teams and environments.
+Citadel Governance Hub is an **enterprise-grade AI landing zone** that provides a centralized, governable, and observable gateway plane for AI consumption across teams and environments.
 
 This repository is a **solution accelerator** that helps you deploy and operate the hub using:
 
-- Infrastructure-as-code (Bicep)
+- Infrastructure-as-code (Bicep, Terraform)
 - A unified AI gateway pattern (Azure API Management)
-- Usage ingestion components (Logic Apps + Azure Functions)
+- Usage ingestion components (Logic Apps + Event Hub + Cosmos DB)
 - Validation notebooks and operational guides
 
 ## 🏛️ Part of the AI Citadel Blueprint
@@ -33,12 +33,12 @@ The **AI Citadel Blueprint** is a unified, layered approach to AI security and c
 | 🔷 **Layer 1** | **Governance Hub** | Runtime enforcement — unified AI gateway, policy-as-code, identity validation, token rate limiting, content filtering, cost attribution | **👉 This Accelerator** ([aka.ms/ai-hub-gateway](https://aka.ms/ai-hub-gateway)) |
 | 🔶 **Layer 2** | **Agent Operations** | Agent runtime, observability & compliance — agent traces, AI evaluations, fleet operations, automated compliance checks | [Microsoft Foundry Agents & Control Plane](https://learn.microsoft.com/en-us/azure/ai-foundry/control-plane/overview) |
 | 🟢 **Layer 3** | **Agent Identity** | Agent identity & lifecycle governance and security — unique agent identities, blueprints, shadow agent detection, sponsorship model, access packages | [Governing Agent Identities with Agent 365](https://learn.microsoft.com/en-us/microsoft-agent-365/) |
-| 🛡️ **Layer 4** | **Security Fabric** | Unified protection — `Microsoft Defender` for AI threat intelligence, `Purview` for data governance, `Entra` for authentication and authorization | Microsoft Defender, Purview & Entra |
+| 🛡️ **Layer 4** | **Security Foundation** | Unified protection — `Microsoft Defender` for AI threat intelligence, `Purview` for data governance, `Entra` for authentication and authorization | Microsoft Defender, Purview & Entra |
 
 The layers are not isolated silos — they form an integrated architecture grounded in the principle of **separation of concerns with unified oversight**.
 
-**Layer 1: Governance Hub** (this accelerator) acts as the runtime gateway through a hub-and-spoke deployment where a centrally managed AI gateway (Azure API Management) enforces runtime policies, while spoke environments (layer 2: Agent Operations) give each business unit autonomous development within guardrails.
-Adding **Layer 3: Agent Identity** ensures that every agent has a unique, governable identity, while **Layer 4: Security Fabric** provides unified threat protection and data governance across the entire architecture.
+**Layer 1: Governance Hub** (this accelerator) acts as the runtime gateway through a hub-and-spoke deployment where a centrally managed AI gateway (Azure API Management) enforces runtime policies, while **Layer 2: Agent Operations** spoke environments give each business unit autonomous development within guardrails.
+Adding **Layer 3: Agent Identity** ensures that every agent has a unique, governable identity, while **Layer 4: Security Foundation** provides unified threat protection and data governance across the entire architecture.
 
 > 📎 For the full Citadel Blueprint approach and guidance, visit: [aka.ms/foundry-citadel](https://aka.ms/foundry-citadel)
 
@@ -65,54 +65,8 @@ At a high level, the accelerator includes:
 - [validation](./validation): Jupyter notebooks for post-deployment validation and onboarding.
 - [guides](./guides): operational and architecture documentation.
 
-## 🏷️ Release Version
+> **Terraform support** is now available in the [github.com/Azure/terraform-ai-gateway-landing-zone](https://github.com/Azure/terraform-ai-gateway-landing-zone) repo, with a parallel structure to the Bicep implementation.
 
-The accelerator tracks its release state in a single source-of-truth manifest at the repository
-root — [`release.json`](./release.json). Instead of one monolithic version, it uses **independent,
-component-scoped version tracks** so a change in one subsystem does not force re-versioning of
-unrelated ones:
-
-| Track | Meaning |
-|-------|---------|
-| `master-version` | Umbrella accelerator release version |
-| `routing-version` | LLM request routing logic (backend pools, model resolution, failover) |
-| `backend-contract-version` | Shape of the `llmBackendConfig` backend onboarding contract |
-| `access-contract-version` | Shape of the Citadel Access Contract (products & access policies) |
-| `gateway-upgrade-version` | In-place APIM Gateway Upgrade tooling (currently `-preview`) |
-| `usage-ingestion-version` | Usage ingestion pipeline (Logic App + Function) |
-
-The deployed manifest is exposed at runtime through the **Release Version API** in API Management:
-
-```bash
-curl https://<your-apim-gateway-host>/version
-```
-
-This anonymous `GET /version` endpoint returns `release.json` verbatim (served from an APIM mock
-policy — no backend). It is created automatically by the **primary deployment** and created/updated
-by the **APIM Gateway Upgrade**, so the endpoint always reflects the currently deployed release.
-
-The same API also exposes `GET /version/backend-contract`, which returns the **active LLM backend
-routing contract** — a detailed projection of the effective onboarding configuration (APIM target,
-full `llmBackendConfig` with per-model metadata, circuit breaker and session affinity settings, model
-aliases, and derived pools), plus the `backend-contract-version`:
-
-```bash
-curl https://<your-apim-gateway-host>/version/backend-contract
-```
-
-This response is produced by a dynamically generated `backend-contract` policy fragment that is
-refreshed by **both** the primary deployment **and** the LLM Backend Onboarding submodule — so
-onboarding new backends updates the contract without changing the API definition. Inline secret
-values are redacted.
-
-> [!IMPORTANT]
-> The primary deployment (`main.bicep`) is used for the **initial implementation** only. After the
-> hub is live, the **[APIM Gateway Upgrade](./bicep/infra/apim-gateway-upgrade/README.md)** submodule
-> is the standard way to move the accelerator to new releases — applying the new version in place
-> without re-provisioning the APIM service or landing-zone infrastructure.
-
-> 📎 For version-track semantics, SemVer rules, and per-track migration guidance, see the
-> [**Release Version Management Guide**](./guides/release-version-management.md).
 
 ## �🏗️ Architecture Overview
 
@@ -396,6 +350,7 @@ Master AI Citadel Governance Hub implementation and operations with our detailed
 
 | Guide | Description |
 |-------|-------------|
+| [**🆕 Platform Observability Guide**](./guides/platform-observability-guide.md) | Layered observability: APIM Analytics dashboard, Application Insights, Log Analytics LLM logs (with optional prompt/response auditing), and Cosmos DB + Power BI |
 | [**🆕 Power BI Dashboard**](./guides/power-bi-dashboard.md) | Usage analytics and cost allocation dashboards |
 
 ### 🏗️ **Architecture & configurations**
@@ -406,6 +361,51 @@ Master AI Citadel Governance Hub implementation and operations with our detailed
 | [**🆕 LLM Backend Onboarding Guide**](./guides/LLM-Backend-Onboarding-Guide.md) | How to onboard LLM backends (Azure OpenAI, Foundry, external providers) with dynamic routing and load balancing |
 | [**🆕 Resiliency Guide**](./guides/resiliency-guide.md) | Circuit breaker, session affinity, automated failover, and error handling — what each does, how it works, and when to configure it |
 | [**🆕 Throttling Events Handling**](./guides/throttling-events-handling.md) | Monitor and handle throttling events per use case, deployment, and other dimensions |
+
+---
+
+## 🏷️ Release Version
+
+The accelerator tracks its release state in a single source-of-truth manifest at the repository
+root — [`release.json`](./release.json). Instead of one monolithic version, it uses **independent,
+component-scoped version tracks** so a change in one subsystem does not force re-versioning of
+unrelated ones:
+
+| Track | Meaning |
+|-------|---------|
+| `master-version` | Umbrella accelerator release version |
+| `routing-version` | LLM request routing logic (backend pools, model resolution, failover) |
+| `backend-contract-version` | Shape of the `llmBackendConfig` backend onboarding contract |
+| `access-contract-version` | Shape of the Citadel Access Contract (products & access policies) |
+| `gateway-upgrade-version` | In-place APIM Gateway Upgrade tooling (currently `-preview`) |
+| `usage-ingestion-version` | Usage ingestion pipeline (Logic App + Function) |
+
+The deployed manifest is exposed at runtime through the **Release Version API** in API Management:
+
+```bash
+curl https://<your-apim-gateway-host>/version
+```
+
+This `GET /version` endpoint returns `release.json`. It is created automatically by the **primary deployment** and created/updated
+by the **APIM Gateway Upgrade**, so the endpoint always reflects the currently deployed release.
+
+The same API also exposes `GET /version/backend-contract`, which returns the **active LLM backend
+routing contract** — a detailed projection of the effective onboarding configuration (APIM target,
+full `llmBackendConfig` with per-model metadata, circuit breaker and session affinity settings, model
+aliases, and derived pools), plus the `backend-contract-version`:
+
+```bash
+curl https://<your-apim-gateway-host>/version/backend-contract
+```
+
+> [!IMPORTANT]
+> The primary deployment (`main.bicep`) is used for the **initial implementation** only. After the
+> hub is live, the **[APIM Gateway Upgrade](./bicep/infra/apim-gateway-upgrade/README.md)** submodule
+> is the standard way to move the accelerator to new releases — applying the new version in place
+> without re-provisioning the APIM service or landing-zone infrastructure.
+
+> 📎 For version-track semantics, SemVer rules, and per-track migration guidance, see the
+> [**Release Version Management Guide**](./guides/release-version-management.md).
 
 ---
 

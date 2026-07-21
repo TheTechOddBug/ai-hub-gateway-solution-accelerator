@@ -347,7 +347,7 @@ Citadel Governance Hub deployed **within** your existing hub VNet.
 │  └──────────────────────────────┘   │
 │  ┌──────────────────────────────┐   │
 │  │   Shared Services            │   │
-│  │   - Azure Firewall           │   │
+│  │   - Azure Firewall & WAF     │   │
 │  │   - DNS                      │   │
 │  └──────────────────────────────┘   │
 └─────────────────────────────────────┘
@@ -476,8 +476,6 @@ param dnsSubscriptionId = '00000000-0000-0000-0000-000000000000'
 
 **Required DNS Zones:**
 - `privatelink.vaultcore.azure.com`
-- `privatelink.cognitiveservices.azure.com`
-- `privatelink.vaultcore.azure.net`
 - `privatelink.monitor.azure.com`
 - `privatelink.servicebus.windows.net`
 - `privatelink.documents.azure.com`
@@ -487,6 +485,8 @@ param dnsSubscriptionId = '00000000-0000-0000-0000-000000000000'
 - `privatelink.queue.core.windows.net`
 - `privatelink.azure-api.net` (for APIM v2 SKUs)
 - `privatelink.services.ai.azure.com` (for AI Foundry)
+- `privatelink.openai.azure.com` (for AI Foundry)
+- `privatelink.cognitiveservices.azure.com` (for AI Foundry)
 
 **APIM Subnet Requirements:**
 
@@ -1041,8 +1041,9 @@ az resource list \
 
 This repo includes a set of validation notebooks under the `/validation` folder:
 
-- [citadel-governance-hub-primary-tests.ipynb](../validation/citadel-governance-hub-primary-tests.ipynb): Initial discovery of the deployed governance hub and help creating the first access contract.
 - [llm-backend-onboarding-runner.ipynb](../validation/llm-backend-onboarding-runner.ipynb): Onboard existing LLM backends, configure routing, and validate connectivity.
+- [citadel-access-contracts-tests.ipynb](../validation/citadel-access-contracts-tests.ipynb): Onbaord AI Agents and AI use cases into the gateway
+- [citadel-agent-frameworks-tests.ipynb](../validation/citadel-agent-frameworks-tests.ipynb): Build/deploy 3 types of agents that uses the gateway's access contracts (Microsoft Agent Framework, Foundry Agent and LangChain agent)
 
 ---
 
