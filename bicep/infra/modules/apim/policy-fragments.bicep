@@ -50,6 +50,16 @@ resource raiseThrottlingEventsPolicyFragment 'Microsoft.ApiManagement/service/po
   }
 }
 
+resource raiseAlertEventsPolicyFragment 'Microsoft.ApiManagement/service/policyFragments@2022-08-01' = {
+  parent: apimService
+  name: 'raise-alert-events'
+  properties: {
+    description: 'Comprehensive, opt-in alerting: emits App Insights custom metrics for throttling, backend, authorization, content-safety, and PII failures, sliceable per product/model/backend/app'
+    value: loadTextContent('./policies/frag-raise-alert-events.xml')
+    format: 'rawxml'
+  }
+}
+
 resource piiAnonymizationPolicyFragment 'Microsoft.ApiManagement/service/policyFragments@2022-08-01' = {
   parent: apimService
   name: 'pii-anonymization'

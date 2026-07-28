@@ -164,17 +164,27 @@
         <!-- Cache response_id → owner mapping for successful POST /responses (cross-API shared fragment). -->
         <include-fragment fragment-id="responses-id-cache-store" />
         <include-fragment fragment-id="set-response-headers" />
+        <!-- Alerting: emit custom metrics for error responses that reached the client
+             (e.g. backend 429 throttling / 5xx failures). Opt-in per category via the
+             access contract; see raise-alert-events fragment. -->
+        <choose>
+            <when condition="@((context.Response?.StatusCode ?? 0) >= 400)">
+                <include-fragment fragment-id="raise-alert-events" />
+            </when>
+        </choose>
     </outbound>
     <on-error>
         <base />
         <!--
             Error Handling
-            Purpose: Pushes custom metrics for errors to enable Azure Monitor alerts
+            Purpose: Pushes custom metrics for critical events to enable Azure Monitor alerts
             
-            Integration: Uses raise-throttling-events fragment to send metrics to monitoring system for 429 responses
+            Integration: Uses raise-alert-events fragment to send metrics for throttling (429),
+            backend failures (5xx), authorization failures, content-safety blocks, and PII failures.
+            Alerting is opt-in per category and can be tailored per access contract.
         -->
         
-        <include-fragment fragment-id="raise-throttling-events" />
+        <include-fragment fragment-id="raise-alert-events" />
         <include-fragment fragment-id="set-response-headers" />
     </on-error>
 </policies>

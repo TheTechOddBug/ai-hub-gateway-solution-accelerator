@@ -18,6 +18,7 @@ The recommended execution order is:
 8. **JWT Authentication** — Validate JWT-enforced and role-based access control across all API endpoints
 9. **Extended Providers Backend Onboarding** — Onboard and validate non-Microsoft-Foundry AI backends (AWS Bedrock, GCP Gemini, Anthropic Claude) through native and OpenAI-compatible routing to confirm multi-cloud support
 10. **Session Affinity** — Validate backend-pool sticky routing for the stateful OpenAI Responses API — a per-session cookie jar keeps all requests in a session pinned to the same backend
+11. **Gateway Alerting** — Trigger real alerts: provision a restrictive access contract, force throttling (HTTP 429) *and* quota exhaustion (HTTP 403), deploy Azure Monitor metric alerts on the `AI Gateway Alert` custom metric, and verify the metrics + rules
 
 Each notebook is self-contained with initialization, deployment, testing, visualization, and cleanup stages, enabling both interactive exploration and repeatable validation.
 
@@ -121,6 +122,7 @@ The table below summarizes which `azd` env variables each notebook auto-loads wh
 | `citadel-jwt-authentication-tests` | `AZURE_RESOURCE_GROUP` → `governance_hub_resource_group`<br>`AZURE_LOCATION` → `location`<br>`AZURE_SUBSCRIPTION_ID` → `keyvault_subscription_id` / `foundry_subscription_id`<br>`ENTRA_TENANT_ID` → `entra_tenant_id`<br>`ENTRA_CLIENT_ID` → `entra_client_id`<br>`ENTRA_AUDIENCE` → `entra_audience` (defaults to `api://<client_id>` if missing)<br>*`KEY_VAULT_NAME` → `keyvault_name`*<br>*`AI_FOUNDRY_SERVICES[0]` (JSON) → `foundry_account_name` + `foundry_project_name`*<br>**Note:** `entra_client_secret` is intentionally **not** auto-loaded — set it manually before running JWT tests. |
 | `llm-backend-onboarding-extended-providers-runner` | `AZURE_RESOURCE_GROUP` → `governance_hub_resource_group`<br>`AZURE_LOCATION` → `location`<br>`LLM_BACKEND_CONFIG` (JSON) → merged with the extended-provider backends in `llm_backends_config`<br>*`KEY_VAULT_NAME` → `key_vault_name`*<br>**Note:** `init_from_azd` defaults to **`False`** here so the in-notebook `REPLACE_*` provider placeholders are preserved; flip to `True` to merge your azd-maintained Foundry backends with the new providers. |
 | `citadel-session-affinity-tests` | `AZURE_RESOURCE_GROUP` → `governance_hub_resource_group`<br>`AZURE_LOCATION` → `location`<br>`LLM_BACKEND_CONFIG` (JSON) → `llm_backends_config` (used to enable `sessionAwareModel` for the target model) |
+| `citadel-alerting-tests` | `AZURE_RESOURCE_GROUP` → `governance_hub_resource_group`<br>`AZURE_LOCATION` → `location`<br>`AZURE_SUBSCRIPTION_ID` → `subscription_id`<br>*`APIM_APP_INSIGHTS_NAME` → `app_insights_name`* (auto-discovered from the hub RG if unset) |
 
 > **Multi-environment teams:** Run `azd env select <env-name>` before launching the notebook to switch which deployment the notebook talks to. Each `.azure/<env-name>/.env` file is fully self-contained.
 
@@ -796,9 +798,64 @@ cleanup_delete_contract = False  # set True to delete the access contract at the
 
 ---
 
+### 11. Gateway Alerting Tests
+
+| | |
+|---|---|
+| **Notebook** | [`citadel-alerting-tests.ipynb`](citadel-alerting-tests.ipynb) |
+| **Purpose** | Trigger and validate the gateway's **comprehensive alerting** end-to-end by forcing **two** distinct events (throttling + quota-exceeded) and wiring Azure Monitor metric alerts |
+| **Run this** | After backend onboarding (notebook 1). Self-contained — creates its own restrictive access contract and alert rules. |
+
+#### What It Does
+
+The [`raise-alert-events`](../bicep/infra/modules/apim/policies/frag-raise-alert-events.xml) policy fragment emits a single `AI Gateway Alert` custom metric (namespace `ai-gateway-alerts`, sliced by `alertType`) for throttling, quota-exceeded, backend, authorization, content-safety, and PII events. This notebook proves the path works by *actually firing* two alerts from the two `llm-token-limit` enforcement dimensions.
+
+It provisions a deliberately **restrictive access contract** (low `tokens-per-minute` **and** small `token-quota`), **auto-selects a `gpt`-family model** (excluding image / embedding / audio / non-Azure cloud models, with an override option), then drives load in two phases:
+
+- **Phase 1 — throttling (429):** a concurrent burst overshoots the per-minute token rate (TPM) → `throttling` alert metric.
+- **Phase 2 — quota-exceeded (403):** sustained load exhausts the long-term `token-quota` (`AITokenQuotaExceeded`) → `quota-exceeded` alert metric.
+
+It then deploys the [`app-insights-alert`](../bicep/infra/app-insights-alert/README.md) Bicep (one metric alert rule per `alertType` + an email action group, scoped to the probe contract) and verifies both metrics were emitted and both alert rules were created.
+
+#### Steps
+
+| Step | Description |
+|---|---|
+| 0 | **Initialize variables** — Governance hub, model-selection filters, alert email, restrictive capacity, and demo-tuned alert thresholds |
+| 1 | **Verify Azure CLI** — Confirm authentication and subscription context |
+| 2 | **Initialize APIM Client & auto-select model** — Read supported models and pick a `gpt`-family chat model (or honor `model_name_override`) |
+| 3 | **Define + deploy the restrictive contract** — Low-TPM + low-quota access contract whose dynamic policy opts into `alertOnThrottling` / `alertOnAuthFailure` |
+| 4 | **Discover App Insights & deploy alerts** — Resolve the APIM Application Insights component and deploy the throttling + quota-exceeded rules + email action group |
+| 5 | **Phase 1 — throttling** — Burst concurrent requests to force HTTP 429 |
+| 5.1 | **Phase 2 — quota-exceeded** — Sustained load until the token-quota is exhausted (HTTP 403) |
+| 6 | **Verify** — Query the `AI Gateway Alert` metric split by `alertType` and confirm both alert rules exist |
+| 🧹 | **Cleanup** *(disabled)* — Delete the alert rules, action group, probe contract, and generated parameter files |
+
+#### Key Configuration
+
+```python
+model_name_override      = ""      # empty = auto-select a gpt-family model
+alert_email_address      = "REPLACE@example.com"   # who receives the alert
+probe_tokens_per_minute  = 500     # low TPM so a burst throttles (429)
+probe_token_quota        = 1200    # small hourly quota so sustained load exhausts it (403)
+quota_max_seconds        = 360     # Phase 2 time budget to reach the 403
+```
+
+#### Output
+
+- A restrictive access contract (APIM product + subscription) that throttles and then exhausts its quota
+- Phase 1 producing HTTP 429 (`throttling`) and Phase 2 producing HTTP 403 (`quota-exceeded`)
+- Azure Monitor metric alert rules (throttling + quota-exceeded) + an email action group (deployed via `app-insights-alert`)
+- Verification that the `AI Gateway Alert` metric was emitted for both alertTypes and both rules are configured
+- Alert emails once Azure Monitor next evaluates the crossed thresholds
+
+> **Note:** Custom metrics can take ~3 minutes to first register, and metric alerts evaluate on a schedule (minimum `PT1M`), so the notification is not instantaneous.
+
+---
+
 ## Recommended Execution Order
 
-> **Strongly recommended baseline:** run notebooks **1 → 4** in order on every new Citadel Governance Hub deployment. Steps **5 → 10** are optional, scenario-specific validations that can be run independently afterwards.
+> **Strongly recommended baseline:** run notebooks **1 → 4** in order on every new Citadel Governance Hub deployment. Steps **5 → 11** are optional, scenario-specific validations that can be run independently afterwards.
 
 ```
 ┌──────────────────────────────────────────────┐
@@ -853,10 +910,16 @@ cleanup_delete_contract = False  # set True to delete the access contract at the
 ┌──────────────────────────────────────────────┐
 │ 10. citadel-session-affinity-tests           │  Optional: sticky routing for the stateful
 │                                              │     Responses API (per-session cookie jar)
+└──────────────┬───────────────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────────────┐
+│ 11. citadel-alerting-tests                   │  Optional: trigger throttling & wire
+│                                              │     Azure Monitor alerts (email action group)
 └──────────────────────────────────────────────┘
 ```
 
-> **Note:** Notebooks 5–10 create their own access contracts and can be run independently after backend onboarding. Notebook 5 re-deploys the LLM backend onboarding Bicep with `modelAliases` populated (the `resolve-model-alias` fragment is regenerated; full cross-API coverage requires the Unified AI API to be imported), notebook 6 requires PII policy fragments (`pii-anonymization`, `pii-deanonymization`, `pii-state-saving`), notebook 7 requires the Unified AI API (`unified-ai`) to be imported into APIM, notebook 8 requires JWT configuration plus an Entra ID app registration, notebook 9 extends backend onboarding with non-Azure providers (native `/bedrock/**`, `/gemini/**`, and `/claude/**` routing requires the Unified AI API to be imported), and notebook 10 re-deploys the onboarding Bicep to enable `sessionAwareModel` for the target model and requires the Unified AI API for the Responses API.
+> **Note:** Notebooks 5–11 create their own access contracts and can be run independently after backend onboarding. Notebook 5 re-deploys the LLM backend onboarding Bicep with `modelAliases` populated (the `resolve-model-alias` fragment is regenerated; full cross-API coverage requires the Unified AI API to be imported), notebook 6 requires PII policy fragments (`pii-anonymization`, `pii-deanonymization`, `pii-state-saving`), notebook 7 requires the Unified AI API (`unified-ai`) to be imported into APIM, notebook 8 requires JWT configuration plus an Entra ID app registration, notebook 9 extends backend onboarding with non-Azure providers (native `/bedrock/**`, `/gemini/**`, and `/claude/**` routing requires the Unified AI API to be imported), and notebook 10 re-deploys the onboarding Bicep to enable `sessionAwareModel` for the target model and requires the Unified AI API for the Responses API, and notebook 11 creates a restrictive-TPM access contract and deploys Azure Monitor alert rules (`app-insights-alert`) to trigger and validate throttling alerts.
 
 ## Shared Utilities
 

@@ -857,7 +857,8 @@ See [Power BI Dashboard](./power-bi-dashboard.md) for turning these metrics into
 | `resolve-model-alias` | Resolves a client-facing alias to an actual model (priority/weighted). No-op when not an alias. |
 | `get-available-models` | Returns filtered list of models for deployment discovery |
 | `ai-foundry-compatibility` | CORS configuration for AI Foundry |
-| `raise-throttling-events` | Sends throttling metrics on errors |
+| `raise-alert-events` | Emits critical-event alert metrics (throttling, backend, auth, content-safety, PII); opt-in per category |
+| `raise-throttling-events` | *(legacy)* Sends throttling-only metrics on errors; superseded by `raise-alert-events` |
 
 ### Universal LLM / Azure OpenAI Only
 
