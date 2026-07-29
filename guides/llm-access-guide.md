@@ -66,7 +66,7 @@ Direct, key-per-team access to provider endpoints creates unpredictable cost, no
 | **RBAC / access contracts** | Per-product `allowedModels` and `allowedBackendPools` decide which use case can reach which model/pool. | [RBAC Integration](#rbac-integration), [Access Contracts notebook](../validation/citadel-access-contracts-tests.ipynb) |
 | **Cost attribution & usage metrics** | Token usage is emitted per product / model / backend / app for chargeback and FinOps. | [Usage Metrics Collection](#usage-metrics-collection), [Power BI Dashboard](./power-bi-dashboard.md) |
 | **Content safety & PII** | Prompt shields, harmful-content detection, and PII anonymization can be enforced in policy without app changes. | [PII Masking](./pii-masking-apim.md), [PII notebook](../validation/citadel-pii-processing-tests.ipynb) |
-| **Stateful-resource isolation** | Responses API `response_id` values are owned per subscription — cross-subscription access is blocked. | [Responses API ID Security](#step-15-responses-api-id-security-responses-id-security--responses-id-cache-store) |
+| **Stateful-resource isolation** | Responses API `response_id` values are owned per subscription and product — cross-owner access is blocked for 30 days. | [Responses API ID Security](#step-15-responses-api-id-security-responses-id-security--responses-id-cache-store) |
 | **Observability** | Central App Insights / Azure Monitor metrics plus optional `UAIG-*` debug headers expose every routing decision. | [Response Headers](#step-10-response-headers-set-response-headers), [Governance Hub Benefits](./governance-hub-benefits.md) |
 
 ---
@@ -424,20 +424,22 @@ If none match, returns 400 `missing_model_parameter`.
 
 #### Step 1.5: Responses API ID Security (`responses-id-security` / `responses-id-cache-store`)
 
-The OpenAI **Responses API** (`POST /responses`, `GET /responses/{response_id}`, `GET /responses/{response_id}/input_items`, `DELETE /responses/{response_id}`) is stateful: a `response_id` returned by the backend can be re-used by the client to fetch or chain (`previous_response_id`) prior outputs. To prevent **cross-subscription access** to those server-side conversations, the gateway adds a single shared pair of fragments wired into all three API surfaces:
+The OpenAI **Responses API** (`POST /responses`, `GET /responses/{response_id}`, `GET /responses/{response_id}/input_items`, `DELETE /responses/{response_id}`) is stateful: a `response_id` returned by the backend can be re-used by the client to fetch or chain (`previous_response_id`) prior outputs. To prevent **cross-subscription and cross-product access** to those server-side conversations, the gateway adds a single shared pair of fragments wired into all three API surfaces:
 
 | Fragment | Stage | Responsibility |
 |---|---|---|
-| `responses-id-security` | inbound | Detects `/responses*` routes, resolves the `response_id` (URL path or `previous_response_id` body), looks up its owner in APIM cache, returns **403** on subscription mismatch and **404** when no cache entry exists for a GET/DELETE. For GET/DELETE it also **hydrates `requestedModel`** from the cache so model-based routing keeps working for those previously model-less operations. |
-| `responses-id-cache-store` | outbound | After a successful `POST /responses`, parses the response body, extracts `id`, and writes `key=response-id-{id}` → `value=<subscriptionId>\|<requestedModel>\|<userId>` to APIM internal cache (24h TTL). |
+| `responses-id-security` | inbound | Detects `/responses*` routes, resolves the `response_id` (URL path or `previous_response_id` body), looks up its owner in APIM cache, returns **403** when either the subscription or product differs and **404** when no cache entry exists for a GET/DELETE. For GET/DELETE it also **hydrates `requestedModel`** from the cache so model-based routing keeps working for those previously model-less operations. |
+| `responses-id-cache-store` | outbound | After a successful `POST /responses`, parses the response body, extracts `id`, and writes `key=response-id-{id}` → `value=<subscriptionId>\|<productId>\|<requestedModel>\|<userId>` to APIM internal cache for **30 days**. |
 
 Cache contract:
 
 ```
 key   = "response-id-" + response_id
-value = "<subscriptionId>|<requestedModel>|<userId>"   // userId from JWT 'azp' claim, falling back to subscription name
-ttl   = 86400 seconds
+value = "<subscriptionId>|<productId>|<requestedModel>|<userId>"
+ttl   = 2592000 seconds (30 days)
 ```
+
+`productId` is normalized to `NA` when APIM has no product context, such as a master subscription that can access APIs directly. Both the subscription ID and normalized product ID must match on subsequent requests. The 30-day mapping lifetime aligns with the default OpenAI Responses API retention period, so the gateway keeps ownership and routing metadata for the same default window as the stored response.
 
 Routing impact on `set-target-backend-pool`:
 
@@ -979,8 +981,8 @@ api-key: <subscription-key>
 | `400: alias_no_compatible_member` | Alias has no member compatible with the inbound surface | Add a compatible member or call via a compatible surface |
 | `403: backend_pool_access_forbidden` | RBAC blocks pool access | Update product's `allowedBackendPools` |
 | `403: PathNotAllowed` | Unified AI request path doesn't match any configured API type | Check `metadata-config` api-types base-paths |
-| `403: response_id_forbidden` | Cross-subscription Responses API access | Use the subscription that created the `response_id` |
-| `404: response_id_not_found` | Unknown / expired `response_id` | Re-create the response |
+| `403: response_id_forbidden` | Cross-subscription or cross-product Responses API access | Use the subscription and product pair that created the `response_id` |
+| `404: response_id_not_found` | Unknown or expired `response_id` mapping (30-day retention) | Re-create the response |
 | `401: product_required` | Request not associated with a product subscription | Provide a valid `api-key` header |
 | `429: Too Many Requests` | All backends throttling | Wait for retry-after or add capacity |
 | `503: Backend pool unavailable` | Circuit breaker open | Wait for trip duration to expire |

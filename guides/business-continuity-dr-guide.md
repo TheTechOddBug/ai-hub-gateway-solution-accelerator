@@ -405,3 +405,4 @@ The primary gateway generates the subscription key; the additional gateway **reu
 - [Cosmos Global Multi-Master Sync](../bicep/infra/citadel-cosmos-global-multi-master-sync/README.md) — link Cosmos accounts into a multi-write topology for consolidated usage data.
 - [LLM Backend Onboarding (Backend Contract)](../bicep/infra/llm-backend-onboarding/README.md) — pools, priority/weight routing, circuit breaker, aliases.
 - [Full Deployment Guide](./full-deployment-guide.md) — deploying a complete Governance Hub instance (repeat per region for Option 1).
+- [High availability and resiliency for Microsoft Foundry projects and Agent Services](https://learn.microsoft.com/en-us/azure/foundry/how-to/high-availability-resiliency) — Foundry-specific high-availability guidance.
