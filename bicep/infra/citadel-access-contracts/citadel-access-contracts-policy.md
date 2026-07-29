@@ -232,23 +232,53 @@ If a dimension has the same meaning everywhere, embed the default directly in th
 
 ### Configuring Alerts Policy
 
-Collecting throttling events can help in setting up alerts in Application Insights. You can configure the following variables in the product policy outbound section to customize the throttling event details:
+The gateway ships a comprehensive, opt-in alerting fragment, `raise-alert-events`, that emits a single Application Insights custom metric (`AI Gateway Alert`, namespace `ai-gateway-alerts`) for a curated set of service-impacting events. It is **already wired into all three inference APIs** (Azure OpenAI, Universal LLM, Unified AI), so you do **not** need to include the fragment yourself — an access contract only sets **toggle variables** to tailor which categories it alerts on.
+
+**Event categories and their toggles:**
+
+| `alertType` | Trigger | Toggle variable | Default |
+|-------------|---------|-----------------|---------|
+| `throttling` | HTTP `429` (per-minute token rate / TPM exceeded) | `alertOnThrottling` | **On** |
+| `quota-exceeded` | HTTP `403` (long-term `token-quota` exhausted, `AITokenQuotaExceeded`) | `alertOnQuotaExceeded` | **On** |
+| `backend-failure` | HTTP `5xx` backend fault / connectivity error | `alertOnBackendFailure` | **On** |
+| `auth-failure` | HTTP `401`/`403` — missing/invalid key, missing/invalid JWT, insufficient role, model-access denied | `alertOnAuthFailure` | Off |
+| `content-safety` | `llm-content-safety` block | `alertOnContentSafety` | Off |
+| `pii-failure` | PII anonymization failure (fail-closed `502`) | `alertOnPiiFailure` | Off |
+
+A master switch, `alertsEnabled` (default `true`), suppresses **all** alerting for the contract when set to `false`.
+
+> **Where to set the toggles:** set them in the **inbound** section (before or right after `<base/>`). Context variables persist across sections, so an inbound toggle is honored when `raise-alert-events` runs later in `outbound` / `on-error`, and also at the authorization rejection points that emit in explicit mode (`security-handler`, `validate-model-access`).
+
+**Opt a mission-critical use case into additional categories:**
 
 ```xml
-<on-error>
+<inbound>
     <base />
-    <!-- Raising throttling events (http 429 only) can help in setting up alerts in App Insights -->
-    <!-- Set the following variables to customize the throttling event details -->
-    <set-variable name="productName" value="@(context.Product?.Name?.ToString() ?? "Portal-Admin")" />
-    <set-variable name="deploymentName" value="@((string)context.Variables.GetValueOrDefault<string>("requestedModel", "DefaultModel"))" />
-    <set-variable name="appId" value="@((string)context.Variables.GetValueOrDefault<string>("appId", context.Subscription?.Id ?? "Portal-Admin-Sub"))" />
-    <include-fragment fragment-id="raise-throttling-events" />
-</on-error>
+    <!-- Throttling + backend-failure are already on platform-wide.
+         Enable auth, content-safety, and PII alerting for this contract: -->
+    <set-variable name="alertOnAuthFailure" value="true" />
+    <set-variable name="alertOnContentSafety" value="true" />
+    <set-variable name="alertOnPiiFailure" value="true" />
+</inbound>
 ```
 
-Based on this policy, you can configure alerts in Application Insights to monitor for high throttling events and take necessary actions.
+**Silence alerting for a noisy, non-critical use case:**
 
->NOTE: Detailed guide on how to setup throttling events handling can be found in [Throttling Events Handling Guide](./throttling-events-handling.md)
+```xml
+<inbound>
+    <base />
+    <!-- Disable just the throttling category for a bursty sandbox... -->
+    <set-variable name="alertOnThrottling" value="false" />
+    <!-- ...or suppress ALL alerting for this contract: -->
+    <!-- <set-variable name="alertsEnabled" value="false" /> -->
+</inbound>
+```
+
+Each event is emitted with the dimensions `alertType`, `statusCode`, `productName`, `deploymentName`, and `backendId` (the selected backend / pool), so a single Azure Monitor alert rule can be split/filtered per category, use case, model, or backend. `emit-metric` supports at most 5 custom dimensions.
+
+> **NOTE:** Detailed guidance on the alerting model and creating Azure Monitor alert rules is in the [Throttling & Critical Event Alerting Guide](../../../guides/throttling-events-handling.md). The broader resiliency context (how alerting complements the circuit breaker and failover) is in the [Resiliency Guide — Alerting on Critical Events](../../../guides/resiliency-guide.md#5-alerting-on-critical-events).
+
+> **NOTE:** The legacy `raise-throttling-events` fragment (metric `AI Throttling`, namespace `throttling-events`) is still deployed for backward compatibility but is superseded by `raise-alert-events`. Prefer the toggles above for new contracts.
 
 
 ### Response Headers Policy
@@ -305,13 +335,13 @@ The [`llm-content-safety`](https://learn.microsoft.com/en-us/azure/api-managemen
 
 You can configure the content safety policy to block or flag content based on your organization's requirements per use-case/access contract.
 
->NOTE: Content Safety has a context input limit of **10K** characters. If the content to be evaluated exceeds this limit, the policy will return a 413 Payload Too Large error. To handle this, you can set up a `window-size` of a maximum of 10,000 in the policy configuration with optional `window-overlap-size` to control overlapping content between windows.
+>NOTE: Content Safety has a context input limit of **10K** characters for both checking the content it self against harmful content and the prompt shield for detecting attacks. Currently APIM support natively chunking input requests over 10K chunks for content safety checks. Prompt Shield however are still limited by the 10K limit. If you have content larger than 10K in the request, it is better to disable `shield-prompt` while configuring the policy.
 
 ```xml
 <inbound>
     <!-- Content Safety Policy -->
     <!-- Failure to pass content safety will result in 403 error -->
-    <llm-content-safety backend-id="content-safety-backend" shield-prompt="true" window-size="10000" window-overlap-size="200" enforce-on-completions="false">
+    <llm-content-safety backend-id="content-safety-backend" shield-prompt="true" window-size="1000" window-overlap-size="200" enforce-on-completions="false">
         <!-- 0 is most restrictive and can be set up-to 7 -->
         <categories output-type="EightSeverityLevels">
             <category name="Hate" threshold="3" />

@@ -1,6 +1,6 @@
 # Resiliency Guide
 
-> **How the Citadel Governance Hub keeps LLM traffic flowing when backends throttle, fail, or hold state.** This guide covers the four resiliency dimensions the gateway handles — **circuit breaking**, **session affinity**, **automated failover**, and **error handling** — and, for each, answers *what* it is, *how* it works, and *when* to configure it.
+> **How the Citadel Governance Hub keeps LLM traffic flowing when backends throttle, fail, or hold state.** This guide covers the five resiliency dimensions the gateway handles — **circuit breaking**, **session affinity**, **automated failover**, **error handling**, and **alerting** — and, for each, answers *what* it is, *how* it works, and *when* to configure it.
 
 The gateway is a single, governed front door in front of every LLM (Azure OpenAI, Microsoft Foundry, AWS Bedrock, Google Gemini, Anthropic Claude, and more). Because every call is proxied through Azure API Management (APIM), resiliency is enforced centrally in policy and backend configuration — clients get transparent protection without changing a line of app code.
 
@@ -32,8 +32,9 @@ flowchart TD
 | **[Session Affinity](#2-session-affinity)** | Stateful conversations (Responses/Assistants API) breaking when a follow-up lands on the wrong pool member. | **Off per model** (`sessionAwareModel: false`) | A stateful model is served by a **pool** (2+ backends). |
 | **[Automated Failover](#3-automated-failover)** | Transient throttling/5xx on one backend or provider causing a hard client failure. | **On** (retry + pools; alias fallback when configured) | Whenever a model runs on ≥2 backends, or you want cross-provider fallback via aliases. |
 | **[Error Handling](#4-error-handling)** | Opaque failures that clients can't diagnose or safely retry. | **On** (structured JSON errors on every policy branch) | No config needed — use the [error catalog](#error-catalog) to interpret and react. |
+| **[Alerting](#5-alerting-on-critical-events)** | Silent degradation — throttling, backend faults, auth failures, content-safety blocks, or PII failures going unnoticed. | **On** for throttling & backend failures; other categories **opt-in** | Enable extra categories per mission-critical access contract; wire Azure Monitor alert rules. |
 
-> **Terminology.** "Resiliency" here spans both **availability** (staying up during transient faults via failover and circuit breaking) and **correctness under state** (session affinity). Error handling is the observability surface that ties them together.
+> **Terminology.** "Resiliency" here spans both **availability** (staying up during transient faults via failover and circuit breaking) and **correctness under state** (session affinity). Error handling is the observability surface that ties them together, and alerting turns that surface into proactive notification.
 
 ---
 
@@ -297,7 +298,7 @@ The key resiliency question for any error is: **is it transient?** Transient err
 | **401** | `jwt_required` | security-handler | No | Product requires a JWT but no Bearer token was sent. Add `Authorization: Bearer <token>`. See [JWT client identity](./jwt-client-identity-permissions.md). |
 | **403** | *(model access forbidden)* | [validate-model-access](../bicep/infra/modules/apim/policies/frag-validate-model-access.xml) | No | Requested model isn't in the product's `allowedModels`. Grant it in the access contract or call a permitted model. |
 | **403** | `backend_pool_access_forbidden` | [set-target-backend-pool](../bicep/infra/modules/apim/policies/frag-set-target-backend-pool.xml) | No | Client has no access to any backend pool serving the model (`allowedBackendPools`). Update the access contract. |
-| **403** | `response_id_forbidden` | [responses-id-security](../bicep/infra/modules/apim/policies/frag-responses-id-security.xml) | No | The `response_id` was created by a **different subscription**. Only the owning subscription can read/continue it — expected isolation, not a bug. |
+| **403** | `response_id_forbidden` | [responses-id-security](../bicep/infra/modules/apim/policies/frag-responses-id-security.xml) | No | The `response_id` was created by a **different subscription or product**. Only the owning subscription/product pair can read or continue it during the 30-day ownership window — expected isolation, not a bug. |
 | **403** | `PathNotAllowed` | [request-processor](../bicep/infra/modules/apim/policies/frag-request-processor.xml) | No | The requested path isn't permitted for this API surface. Use a supported route (see [LLM Access Guide](./llm-access-guide.md)). |
 | **400** | `missing_model_parameter` | set-target-backend-pool / [set-llm-requested-model](../bicep/infra/modules/apim/policies/frag-set-llm-requested-model.xml) | No | No `model` in the body/path. Include the model name. |
 | **400** | `unsupported_model` | set-target-backend-pool | No | Model isn't hosted by any pool on this surface. Response lists `supported_models`. Onboard the model or pick a listed one. |
@@ -307,13 +308,14 @@ The key resiliency question for any error is: **is it transient?** Transient err
 | **500** | `AWSCredentialsNotConfigured` | [set-backend-authorization](../bicep/infra/modules/apim/policies/frag-set-backend-authorization.xml) | No (config) | Bedrock backend selected but `aws-access-key` / `aws-secret-key` / `aws-region` named values are missing. Set them (Key Vault-backed) and redeploy. |
 | **502** | `PIIAnonymizationFailed` | [pii-anonymization](../bicep/infra/modules/apim/policies/frag-pii-anonymization.xml) | **Yes** | PII service is unavailable and `continueOnNLPError` is off, so the request was blocked (fail-closed) to prevent unmasked content reaching the backend. Retry; if acceptable, set `continueOnNLPError: true` to fail-open. See [PII Masking](./pii-masking-apim.md). |
 | **429** | *(provider throttling)* | Upstream backend | **Yes** | Backend out of capacity or a capacity-control limit was hit. The gateway already retried/failed over across the pool; honor `Retry-After` and back off. Counts toward the [circuit breaker](#1-circuit-breaker) and is captured as a metric — see [Throttling Events Handling](./throttling-events-handling.md). |
+| **403** | `AITokenQuotaExceeded` | [llm-token-limit](./llm-access-guide.md) (access contract) | No (until reset) | The use case exhausted its long-term `token-quota` for the period; **every** further call is blocked until the quota window resets. Not transient — raise the contract's `token-quota` / shorten `token-quota-period`, or treat as an intentional hard cap. Emitted as the `quota-exceeded` alert — see [Throttling & Critical Event Alerting](./throttling-events-handling.md). |
 | **500–503** | *(provider server error)* | Upstream backend | **Yes** | Transient backend failure. Retried automatically and counted toward the circuit breaker; if it persists past the retry budget, the breaker parks the backend and the pool sheds traffic to healthy members. |
 
 ### How to react
 
 - **Transient (`429`, `500–503`, `502 PIIAnonymizationFailed`):** the gateway retries and fails over where possible. On the client, add bounded exponential backoff and honor `Retry-After`. Sustained transient errors indicate a **capacity or health** problem — add pool members, tune the circuit breaker, or define an [alias fallback](#cross-provider-fallback-via-aliases).
 - **Non-transient (`400`, `401`, `403`, config `500`):** do **not** retry blindly — fix the request, credentials, or [access contract](./llm-access-guide.md#rbac-integration). The `message` and `code` tell you exactly what to change.
-- **Observability.** Throttling is emitted as an App Insights custom metric per product/model/backend/app for alerting — see [Throttling Events Handling](./throttling-events-handling.md). PII degradation and `response_id` mismatches are traced. Use `UAIG-*` debug headers to see routing decisions per call.
+- **Observability.** Service-impacting events (throttling, backend faults, auth failures, content-safety blocks, PII failures) are emitted as the `AI Gateway Alert` custom metric per product/model/backend/app for alerting — see [section 5](#5-alerting-on-critical-events) and the [Throttling & Critical Event Alerting](./throttling-events-handling.md) guide. PII degradation and `response_id` mismatches are traced. Use `UAIG-*` debug headers to see routing decisions per call.
 
 ### When to tune
 
@@ -324,6 +326,77 @@ The key resiliency question for any error is: **is it transient?** Transient err
 | Intermittent `502 PIIAnonymizationFailed` | Confirm PII service health; decide fail-closed (secure) vs `continueOnNLPError: true` (available). |
 | Clients report lost conversation state | Verify the stateful model is `sessionAwareModel: true` **and** the client uses a shared cookie jar. |
 | Clients retry non-transient `4xx` | Educate clients to branch on `error.code`; only `429`/`5xx` are safe to retry. |
+
+---
+
+## 5. Alerting on Critical Events
+
+### What
+
+Error handling ([section 4](#4-error-handling)) makes failures *diagnosable*; alerting makes them *noticed*. The gateway emits a single Application Insights custom metric — **`AI Gateway Alert`** (namespace `ai-gateway-alerts`) — whenever a service-impacting event occurs, so you can build Azure Monitor alert rules that page the right team before users complain.
+
+The design deliberately favors **signal over noise**: only the platform-health categories (throttling, quota-exceeded, backend-failure) fire by default; everything else is opt-in per use case, so mission-critical access contracts get rich alerting while low-value traffic (sandboxes, experiments) stays quiet.
+
+| `alertType` dimension | Trigger | Toggle | Default |
+|---|---|---|---|
+| `throttling` | HTTP `429` — per-minute token rate (TPM) exceeded, or backend rate limit | `alertOnThrottling` | **On** |
+| `quota-exceeded` | HTTP `403` — long-term `token-quota` exhausted (`AITokenQuotaExceeded`) | `alertOnQuotaExceeded` | **On** |
+| `backend-failure` | HTTP `5xx` — backend fault or connectivity error | `alertOnBackendFailure` | **On** |
+| `auth-failure` | HTTP `401`/`403` — missing/invalid key, missing/invalid JWT, insufficient role, model-access denied | `alertOnAuthFailure` | Off |
+| `content-safety` | `llm-content-safety` blocked the prompt/completion | `alertOnContentSafety` | Off |
+| `pii-failure` | PII anonymization failed (fail-closed `502`) | `alertOnPiiFailure` | Off |
+
+Every event carries the dimensions `alertType`, `statusCode`, `productName`, `deploymentName`, and `backendId` (the selected backend / pool; `NA` before routing runs), so one metric powers many precisely-scoped alert rules. `emit-metric` supports at most 5 custom dimensions.
+
+### How
+
+A single fragment, [`raise-alert-events`](../bicep/infra/modules/apim/policies/frag-raise-alert-events.xml), does the work. It runs in two complementary modes:
+
+- **Auto mode** — included in the `outbound` and `on-error` sections of the three inference APIs (Azure OpenAI, Universal LLM, Unified AI). It derives the category from `context.Response.StatusCode` and `context.LastError`, capturing backend `429`/`5xx`, content-safety blocks, JWT validation failures, and PII failures.
+- **Explicit mode** — because authorization rejections short-circuit the pipeline with `<return-response>` (which bypasses `outbound`/`on-error`), the `security-handler` and `validate-model-access` fragments call `raise-alert-events` at the point of rejection with an explicit `alertEventType`, so `auth-failure` events are never missed.
+
+**Two scopes to configure alerting:**
+
+1. **API level (all use cases).** The default wiring already emits `throttling`, `quota-exceeded`, and `backend-failure` for every request across all three APIs — no per-product setup required. To change the platform-wide baseline, adjust the toggles where the fragment is included in the API policies.
+
+2. **Access contract level (per use case).** Opt a specific mission-critical use case into additional categories by setting the toggle in that product policy's `inbound` section (before `<base/>`), so it is in scope when the fragment runs later:
+
+   ```xml
+   <inbound>
+       <base />
+       <!-- This use case is mission-critical: alert on auth + content-safety too -->
+       <set-variable name="alertOnAuthFailure" value="true" />
+       <set-variable name="alertOnContentSafety" value="true" />
+   </inbound>
+   ```
+
+   Or silence a category for a noisy, non-critical use case:
+
+   ```xml
+   <inbound>
+       <base />
+       <set-variable name="alertsEnabled" value="false" />   <!-- suppress ALL alerts for this contract -->
+   </inbound>
+   ```
+
+**Wiring the Azure Monitor alert rule:** deploy the action group + one rule per category with the [`bicep/infra/app-insights-alert`](../bicep/infra/app-insights-alert/README.md) module. It **defaults to log-search (scheduled query) alerts** on the `customMetrics` table so alerting works immediately — the pre-aggregated `ai-gateway-alerts` **metric** namespace only registers after the metric is first emitted (so metric alerts, `alertMode: 'metric'`, are an opt-in for later). Filter each rule by `alertType` (and optionally `productName`, `backendId`) and set a threshold that represents a *meaningful* signal. Manual walkthrough in [Throttling & Critical Event Alerting](./throttling-events-handling.md#creating-alerts-in-azure-monitor).
+
+### When
+
+| Situation | Recommendation |
+|---|---|
+| **Any production gateway** | Keep the default `throttling` / `quota-exceeded` / `backend-failure` metrics on; create Azure Monitor rules on `alertType = throttling`, `alertType = quota-exceeded`, and `alertType = backend-failure` scoped to your platform. |
+| **Capacity-managed use case** | Watch `quota-exceeded` (HTTP `403`) — it means a use case has burned its long-term `token-quota` and is now blocked until the window resets. Raise the contract's `token-quota` / shorten the period, or treat it as an intentional hard cap. |
+| **Mission-critical use case** | Enable `alertOnAuthFailure` / `alertOnContentSafety` / `alertOnPiiFailure` in that access contract so its specific risks are covered. |
+| **Security-sensitive contract** | Turn on `alertOnAuthFailure` to detect credential misconfiguration, token abuse, or probing (spikes in `401`/`403`). |
+| **Compliance / PII contract** | Turn on `alertOnPiiFailure` so a fail-closed PII outage (`502`) pages the team — this is an availability event, not just a security one. |
+| **Content-moderated contract** | Turn on `alertOnContentSafety` to track how often prompts/completions are being blocked. |
+| **Noisy sandbox / demo** | Set `alertsEnabled = false`, or disable specific categories, so experiments don't drown real signals. |
+| **High-traffic contract** | Be deliberate about `deploymentName` cardinality — high cardinality raises custom-metric cost (and `emit-metric` allows at most 5 custom dimensions); aggregate or scope opt-in categories accordingly. |
+
+> **Alerting is the proactive complement to the [circuit breaker](#1-circuit-breaker) and [failover](#3-automated-failover).** Those keep traffic flowing automatically; alerting tells you *why* they had to — e.g. a backend that keeps tripping its breaker shows up as a `backend-failure` spike for a specific `backendId`, `throttling` on a model signals you need more pool capacity or an [alias fallback](#cross-provider-fallback-via-aliases), and `quota-exceeded` signals a use case has hit its long-term token budget.
+
+**Reference:** [Throttling & Critical Event Alerting](./throttling-events-handling.md) · alert rules Bicep in [app-insights-alert](../bicep/infra/app-insights-alert/README.md) · end-to-end validation in [citadel-alerting-tests.ipynb](../validation/citadel-alerting-tests.ipynb) · access-contract configuration in [AI Citadel Access Contracts Policy — Configuring Alerts](../bicep/infra/citadel-access-contracts/citadel-access-contracts-policy.md#configuring-alerts-policy).
 
 ---
 
@@ -363,14 +436,15 @@ param modelAliases = [
 ]
 ```
 
-This yields: a **load-balanced pool** for `gpt-4.1` (priority failover), **session affinity** for its stateful Responses-API traffic, a **circuit breaker** on each backend, and an **alias** giving cross-model fallback — all transparent to clients, with **structured errors** whenever a request can't be served.
+This yields: a **load-balanced pool** for `gpt-4.1` (priority failover), **session affinity** for its stateful Responses-API traffic, a **circuit breaker** on each backend, and an **alias** giving cross-model fallback — all transparent to clients, with **structured errors** whenever a request can't be served. Pair this with **alerting** ([section 5](#5-alerting-on-critical-events)) on the access contract — for a mission-critical model, enable `alertOnAuthFailure` / `alertOnContentSafety` / `alertOnPiiFailure` so every risk dimension pages the team, on top of the always-on throttling and backend-failure metrics.
 
 ---
 
 ## Related Guides
 
 - [LLM Access Guide](./llm-access-guide.md) — routing internals, backend pools, retry logic, model aliases.
-- [Throttling Events Handling](./throttling-events-handling.md) — monitoring `429`s and alerting in Azure Monitor.
+- [Throttling & Critical Event Alerting](./throttling-events-handling.md) — the `AI Gateway Alert` metric, event categories, and setting up alert rules in Azure Monitor.
 - [PII Masking with APIM](./pii-masking-apim.md) — PII anonymization fail-closed vs fail-open behavior.
 - [JWT Client Identity & Permissions](./jwt-client-identity-permissions.md) — auth errors and access contracts.
 - [LLM Backend Onboarding](../bicep/infra/llm-backend-onboarding/README.md) — full circuit-breaker and session-affinity parameter reference.
+- [High availability and resiliency for Microsoft Foundry projects and Agent Services](https://learn.microsoft.com/en-us/azure/foundry/how-to/high-availability-resiliency) — Foundry-specific high-availability guidance.

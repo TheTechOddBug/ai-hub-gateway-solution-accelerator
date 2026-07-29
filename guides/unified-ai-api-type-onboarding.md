@@ -175,7 +175,7 @@ Add a new `<when>` block inside the `<choose>` element, before the default `<oth
 | `/bedrock/model/{model}/converse` (prefix-strip) | Provider-specific native paths | Amazon Bedrock, Gemini native |
 | Fixed path with body-model rewrite | Provider-specific paths whose API has no model in URL | Anthropic Claude (`/claude/v1/messages`) |
 
-> **Stateful APIs (Responses API)** — When your new api-type exposes server-side stateful resources keyed by an id (similar to OpenAI's Responses API `response_id`), pair it with the cross-API `responses-id-security` / `responses-id-cache-store` fragments described in [llm-access-guide.md](llm-access-guide.md#step-15-responses-api-id-security-responses-id-security--responses-id-cache-store). Those fragments are wired in once per API policy and cover Universal LLM, Azure OpenAI, and Unified AI surfaces, returning **403** on cross-subscription access and **404** on unknown ids.
+> **Stateful APIs (Responses API)** — When your new api-type exposes server-side stateful resources keyed by an id (similar to OpenAI's Responses API `response_id`), pair it with the cross-API `responses-id-security` / `responses-id-cache-store` fragments described in [llm-access-guide.md](llm-access-guide.md#step-15-responses-api-id-security-responses-id-security--responses-id-cache-store). Those fragments are wired in once per API policy and cover Universal LLM, Azure OpenAI, and Unified AI surfaces, returning **403** on cross-subscription or cross-product access and **404** on unknown ids. Ownership mappings last 30 days, matching the default OpenAI Responses API retention period.
 
 #### Additional Behaviors
 

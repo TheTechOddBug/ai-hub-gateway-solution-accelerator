@@ -359,8 +359,8 @@ Master AI Citadel Governance Hub implementation and operations with our detailed
 |-------|-------------|
 | [**🆕 LLM Access Guide**](./guides/llm-access-guide.md) | Unified reference for the three LLM APIs and two access patterns, with a deep technical dive into model/backend routing |
 | [**🆕 LLM Backend Onboarding Guide**](./guides/LLM-Backend-Onboarding-Guide.md) | How to onboard LLM backends (Azure OpenAI, Foundry, external providers) with dynamic routing and load balancing |
-| [**🆕 Resiliency Guide**](./guides/resiliency-guide.md) | Circuit breaker, session affinity, automated failover, and error handling — what each does, how it works, and when to configure it |
-| [**🆕 Throttling Events Handling**](./guides/throttling-events-handling.md) | Monitor and handle throttling events per use case, deployment, and other dimensions |
+| [**🆕 Resiliency Guide**](./guides/resiliency-guide.md) | Circuit breaker, session affinity, automated failover, error handling, and alerting — what each does, how it works, and when to configure it |
+| [**🆕 Throttling & Critical Event Alerting**](./guides/throttling-events-handling.md) | Comprehensive, opt-in alerting on throttling, backend, authorization, content-safety, and PII events per use case, model, and backend |
 
 ---
 

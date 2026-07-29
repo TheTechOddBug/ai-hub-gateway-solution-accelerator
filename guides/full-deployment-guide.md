@@ -10,7 +10,7 @@ Deploying the hub is a three-phase journey. This guide covers **Phase 1 (Plan)**
 
 | Phase | You do | Primary references |
 |-------|--------|--------------------|
-| **1. Plan** | Pick region(s), network model, SKUs, resiliency/BC-DR posture | [Sizing Guide](./citadel-sizing-guide.md) · [Resiliency Guide](./resiliency-guide.md) · [BC/DR Guide](./business-continuity-dr-guide.md) |
+| **1. Plan** | Pick region(s), network model, SKUs, resiliency/BC-DR posture | This guide · [Networking Guide](./network-approach.md) · [Sizing Guide](./citadel-sizing-guide.md) · [Resiliency Guide](./resiliency-guide.md) · [BC/DR Guide](./business-continuity-dr-guide.md) |
 | **2. Deploy** | Provision the landing zone (`azd up`) | This guide |
 | **3. Operate** | Onboard backends & use cases, enable auth, activate reporting, upgrade | [Post-Deployment Guide](./post-deployment-guide.md) |
 

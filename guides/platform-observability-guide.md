@@ -69,7 +69,7 @@ resource apiDiagnostics 'Microsoft.ApiManagement/service/apis/diagnostics@2024-0
 
 > **Note:** The built-in dashboard shows **aggregated** usage; it does not contain per-request detail or (unless the message toggle is enabled) prompt content. For request-level detail use capability 3, and for cost attribution use capability 4.
 
-> **Related — Application Insights custom metrics.** Separately from the built-in dashboard, the gateway usage policies (`<llm-emit-token-metric>` in [frag-set-llm-usage.xml](../bicep/infra/modules/apim/policies/frag-set-llm-usage.xml), `<azure-openai-emit-token-metric>` in the streaming fragments, and `<emit-metric>` for throttling in [frag-raise-throttling-events.xml](../bicep/infra/modules/apim/policies/frag-raise-throttling-events.xml)) ship **custom metrics** to Application Insights. These are described under [capability 2](#2-apim--application-insights-performance-monitoring) and are the recommended target for **alerting** (see the [Throttling Events Handling Guide](./throttling-events-handling.md)).
+> **Related — Application Insights custom metrics.** Separately from the built-in dashboard, the gateway usage policies (`<llm-emit-token-metric>` in [frag-set-llm-usage.xml](../bicep/infra/modules/apim/policies/frag-set-llm-usage.xml), `<azure-openai-emit-token-metric>` in the streaming fragments, and `<emit-metric>` for critical-event alerting in [frag-raise-alert-events.xml](../bicep/infra/modules/apim/policies/frag-raise-alert-events.xml)) ship **custom metrics** to Application Insights. These are described under [capability 2](#2-apim--application-insights-performance-monitoring) and are the recommended target for **alerting** (see the [Throttling & Critical Event Alerting Guide](./throttling-events-handling.md)).
 
 </details>
 
@@ -127,7 +127,7 @@ param appInsightsLogSettings object = {
 }
 ```
 
-**LLM usage & throttling custom metrics.** In addition to request telemetry, the gateway usage policies emit **custom metrics** into this Application Insights component. `<llm-emit-token-metric>` ([frag-set-llm-usage.xml](../bicep/infra/modules/apim/policies/frag-set-llm-usage.xml), namespace `llm-usage`), while `<emit-metric>` in [frag-raise-throttling-events.xml](../bicep/infra/modules/apim/policies/frag-raise-throttling-events.xml) publishes throttling (`429`) events (namespace `throttling-events`):
+**LLM usage & alerting custom metrics.** In addition to request telemetry, the gateway usage policies emit **custom metrics** into this Application Insights component. `<llm-emit-token-metric>` ([frag-set-llm-usage.xml](../bicep/infra/modules/apim/policies/frag-set-llm-usage.xml), namespace `llm-usage`), while `<emit-metric>` in [frag-raise-alert-events.xml](../bicep/infra/modules/apim/policies/frag-raise-alert-events.xml) publishes critical-event alerts — throttling (`429`), backend failures (`5xx`), authorization failures, content-safety blocks, and PII failures (metric `AI Gateway Alert`, namespace `ai-gateway-alerts`, sliced by an `alertType` dimension):
 
 ```xml
 <llm-emit-token-metric namespace="llm-usage">
