@@ -391,6 +391,10 @@ param redisSkuCapacity int = 2
 @description('Minimum TLS version for Redis connections.')
 param redisMinimumTlsVersion string = '1.2'
 
+@description('High availability / zone redundancy for Azure Managed Redis. Enabled (default) replicates data across availability zones. Set to Disabled if cluster creation intermittently fails with "CreateFailed" due to zonal capacity constraints in the selected region (reduces the availability SLA).')
+@allowed([ 'Enabled', 'Disabled' ])
+param redisHighAvailability string = 'Enabled'
+
 //
 // ACCELERATOR SPECIFIC PARAMETERS - Additional parameters for the solution (should not be modified without careful consideration)
 //
@@ -936,6 +940,7 @@ module managedRedis './modules/redis/redis.bicep' = if (enableManagedRedis) {
     skuCapacity: redisSkuCapacity
     publicNetworkAccess: redisPublicNetworkAccess
     minimumTlsVersion: redisMinimumTlsVersion
+    highAvailability: redisHighAvailability
     usePrivateEndpoint: true
     redisPrivateEndpointName: !empty(redisPrivateEndpointName) ? redisPrivateEndpointName : '${abbrs.cacheRedis}pe-${resourceToken}'
     vNetName: useExistingVnet ? vnetExisting.outputs.vnetName : vnet.outputs.vnetName
