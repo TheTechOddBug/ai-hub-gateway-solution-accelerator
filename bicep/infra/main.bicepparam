@@ -126,7 +126,7 @@ param enableAIGatewayPiiRedaction = bool(readEnvironmentVariable('ENABLE_PII_RED
 param enableOpenAIRealtime = bool(readEnvironmentVariable('ENABLE_OPENAI_REALTIME', 'true'))
 param entraAuth = bool(readEnvironmentVariable('AZURE_ENTRA_AUTH', 'false'))
 param enableAPICenter = bool(readEnvironmentVariable('ENABLE_API_CENTER', 'false'))
-param enableManagedRedis = bool(readEnvironmentVariable('ENABLE_MANAGED_REDIS', 'true'))
+param enableManagedRedis = bool(readEnvironmentVariable('ENABLE_MANAGED_REDIS', 'false'))
 param enableUnifiedAiApi = bool(readEnvironmentVariable('ENABLE_UNIFIED_AI_API', 'true'))
 
 // ============================================================================
@@ -171,6 +171,7 @@ param apicSku = readEnvironmentVariable('APIC_SKU', 'Free')
 param keyVaultSkuName = readEnvironmentVariable('KEY_VAULT_SKU_NAME', 'standard')
 param redisSkuName = readEnvironmentVariable('REDIS_SKU_NAME', 'Balanced_B1')
 param redisSkuCapacity = int(readEnvironmentVariable('REDIS_SKU_CAPACITY', '1'))
+param redisHighAvailability = readEnvironmentVariable('REDIS_HIGH_AVAILABILITY', 'Enabled')
 
 // ============================================================================
 // ACCELERATOR SPECIFIC PARAMETERS
