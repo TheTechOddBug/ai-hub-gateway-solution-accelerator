@@ -1021,7 +1021,7 @@ module apim './modules/apim/apim.bicep' = {
     dnsZoneRG: !useExistingVnet ? resourceGroup.name : dnsZoneRG
     dnsSubscriptionId: !empty(dnsSubscriptionId) ? dnsSubscriptionId : subscription().subscriptionId
     dnsZoneResourceId: existingApimGatewayDnsZoneId
-    isMCPSampleDeployed: true
+    isMCPSampleDeployed: false
     azureMonitorLogSettings: azureMonitorLogSettings
     appInsightsLogSettings: appInsightsLogSettings
     enableUnifiedAiApi: enableUnifiedAiApi
