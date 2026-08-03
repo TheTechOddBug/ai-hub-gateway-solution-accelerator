@@ -48,6 +48,15 @@ This file contains **all** available parameters with default values and detailed
 - `main.parameters.dev.bicepparam` - Development environment optimized for cost
 - `main.parameters.prod.bicepparam` - Production environment with HA configuration
 
+### 4. `resources.parameters.<env>.bicepparam` (Exception - existing resource group)
+
+Create this file only when subscription-scoped deployment is not possible and the hub resource group already exists. Copy the values from the matching `main.parameters.<env>.bicepparam` file, omit `resourceGroupName`, and point the file at `resources.bicep`. 
+
+**Use this file as a template when:**
+- Deploying directly with Azure CLI or Bicep
+- Targeting an existing resource group
+- Avoiding subscription-scope resource group creation
+  
 ## Deployment Methods
 
 ### Method 1: Using Azure Developer CLI (azd) - Recommended for Quick Start
@@ -112,6 +121,30 @@ For more control, use Bicep parameter files (.bicepparam) directly with Azure CL
    ```
    
    Note: Use the file path directly (no @ prefix needed for .bicepparam files)
+
+### Method 3: Using Azure CLI with Bicep Parameters File and Existing Resource Group
+
+Create `resources.parameters.<env>.bicepparam` only when subscription-scoped deployment is not possible and the target resource group already exists. This deploys the same hub resources as the subscription wrapper, but skips resource group creation and uses an Azure CLI resource-group deployment.
+
+**Steps:**
+
+1. **Confirm the target resource group exists** in the target subscription.
+
+2. **Create a resource-scope parameter file** such as `bicep/infra/resources.parameters.dev.bicepparam`. Copy the values from `main.parameters.dev.bicepparam`, remove `resourceGroupName`, and start the file with `using './resources.bicep'`.
+
+3. **Preview and deploy using Azure CLI:**
+
+   ```powershell
+   az deployment group what-if `
+     --resource-group "<existing-hub-resource-group>" `
+     --template-file "bicep/infra/resources.bicep" `
+     --parameters "bicep/infra/resources.parameters.dev.bicepparam"
+
+   az deployment group create `
+     --resource-group "<existing-hub-resource-group>" `
+     --template-file "bicep/infra/resources.bicep" `
+     --parameters "bicep/infra/resources.parameters.dev.bicepparam"
+   ```
 
 ## Parameter File Structure
 
@@ -465,11 +498,12 @@ param environmentName = 'citadel-dev'
 ## Quick Reference
 
 | Deployment Scenario | Command | Parameters File |
-|-------------------|---------|-----------------||
+|-------------------|---------|-----------------|
 | Quick start with azd | `azd up` | `main.bicepparam` (auto) |
 | Development deployment | `az deployment sub create --parameters main.parameters.dev.bicepparam` | `main.parameters.dev.bicepparam` |
 | Production deployment | `az deployment sub create --parameters main.parameters.prod.bicepparam` | `main.parameters.prod.bicepparam` |
 | Full customization | `az deployment sub create --parameters main.parameters.complete.bicepparam` | `main.parameters.complete.bicepparam` |
+| Existing resource group deployment | `az deployment group create --parameters resources.parameters.<env>.bicepparam` | User-created `resources.parameters.<env>.bicepparam` |
 | Preview changes | `az deployment sub what-if --parameters <file.bicepparam>` | Any .bicepparam file |
 
 ## Next Steps

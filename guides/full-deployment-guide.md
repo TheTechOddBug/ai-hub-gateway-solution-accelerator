@@ -1017,6 +1017,26 @@ azd up
 
 >NOTE: Using `azd up` will use the `main.bicepparam` file for parameter values. You can modify it or set environment variables to override specific parameters. This command provisions the infrastructure and deploys the Logic App workflows in one step.
 
+### Existing Resource Group Deployment Execution
+
+Use this path only when subscription-scoped deployment is not possible and the hub resource group already exists. Create your own resource-scope parameter file, such as `resources.parameters.dev.bicepparam` or `resources.parameters.prod.bicepparam`, with the values for that environment. This exception uses `resources.bicep` directly at resource group scope. It is not an `azd up` flow.
+
+Replace `dev` in the example below with your environment name when needed.
+
+```bash
+# Preview the resource-group deployment
+az deployment group what-if \
+  --resource-group <existing-hub-resource-group> \
+  --template-file ./bicep/infra/resources.bicep \
+  --parameters ./bicep/infra/resources.parameters.dev.bicepparam
+
+# Deploy infrastructure into the existing resource group
+az deployment group create \
+  --resource-group <existing-hub-resource-group> \
+  --template-file ./bicep/infra/resources.bicep \
+  --parameters ./bicep/infra/resources.parameters.dev.bicepparam
+```
+
 ---
 
 ## ✅ Post-Deployment Validation

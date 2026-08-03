@@ -125,6 +125,28 @@ The `main.parameters.dev.bicepparam` file includes:
 
 ---
 
+### Exception: Existing Resource Group Deploy
+
+Use this path only when subscription-scoped deployment is not possible and a resource group already exists. Create your own resource-scope parameter file, such as `resources.parameters.dev.bicepparam`, with the values for that environment. This exception uses direct Bicep deployment with `resources.bicep`.
+
+```bash
+# Preview the resource-group deployment
+az deployment group what-if \
+  --resource-group <existing-hub-resource-group> \
+  --template-file ./bicep/infra/resources.bicep \
+  --parameters ./bicep/infra/resources.parameters.dev.bicepparam
+
+# Deploy infrastructure into the existing resource group
+az deployment group create \
+  --resource-group <existing-hub-resource-group> \
+  --template-file ./bicep/infra/resources.bicep \
+  --parameters ./bicep/infra/resources.parameters.dev.bicepparam
+```
+
+Deploy the Logic App workflow separately after the infrastructure deployment completes.
+
+---
+
 ## 🔧 Post-Deployment Configuration
 
 ### 1. Verify Deployment
