@@ -26,6 +26,13 @@ param mcpPath string
 @description('Whether a subscription key is required to reach the published MCP server')
 param mcpSubscriptionRequired bool = true
 
+@description('Header name callers use to present the subscription (API) key. Accepts the LLM-style "api-key" or the APIM-native "Ocp-Apim-Subscription-Key".')
+@allowed([
+  'api-key'
+  'Ocp-Apim-Subscription-Key'
+])
+param subscriptionKeyHeaderName string = 'api-key'
+
 @description('Custom rawxml policy. When empty, the baseline MCP policy is applied.')
 param mcpPolicyXml string = ''
 
@@ -35,6 +42,10 @@ param mcpPolicyXml string = ''
 
 var defaultPolicyXml = loadTextContent('../policies/baseline-mcp-policy.xml')
 var effectivePolicyXml = empty(mcpPolicyXml) ? defaultPolicyXml : mcpPolicyXml
+
+// Query-string key name mirrors the header: the APIM-native header uses the 'subscription-key' query param,
+// the LLM-style 'api-key' header uses an 'api-key' query param.
+var subscriptionKeyQueryName = subscriptionKeyHeaderName == 'Ocp-Apim-Subscription-Key' ? 'subscription-key' : 'api-key'
 
 // ------------------
 //    RESOURCES
@@ -67,8 +78,8 @@ resource mcp 'Microsoft.ApiManagement/service/apis@2024-06-01-preview' = {
       'https'
     ]
     subscriptionKeyParameterNames: {
-      header: 'api-key'
-      query: 'api-key'
+      header: subscriptionKeyHeaderName
+      query: subscriptionKeyQueryName
     }
     // mcpTools is an MCP preview property not yet in the APIM bicep type definitions; suppress BCP037.
     #disable-next-line BCP037

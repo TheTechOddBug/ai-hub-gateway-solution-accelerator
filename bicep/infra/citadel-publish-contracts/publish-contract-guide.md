@@ -65,9 +65,9 @@ metadata: {
 }
 ```
 
-**`mcp-from-api`**: `sourceApiName`, `operationNames`.
+**`mcp-from-api`**: `sourceApiName`, `operationNames`, `subscriptionRequired` (default `true`), `subscriptionKeyHeaderName` (`api-key` default, or `Ocp-Apim-Subscription-Key`).
 
-**`mcp-existing`**: `transportType` (default `streamable`), `subscriptionRequired` (default `true`), `backend { url, authType, authConfig?, circuitBreaker? }`.
+**`mcp-existing`**: `transportType` (default `streamable`), `subscriptionRequired` (default `true`), `subscriptionKeyHeaderName` (`api-key` default, or `Ocp-Apim-Subscription-Key`), `backend { url, authType, authConfig?, circuitBreaker? }`.
 
 **`a2a`**: `agentId`, `agentCardPath` (default `/.well-known/agent.json`), `agentCardBackendUrl`, `jsonRpcPath` (default `/`), `subscriptionRequired` (default `false`), `subscriptionKeyHeaderName` (`api-key` default, or `Ocp-Apim-Subscription-Key`), `backend { url, authType, authConfig? }`.
 

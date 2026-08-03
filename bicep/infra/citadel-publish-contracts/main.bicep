@@ -82,6 +82,7 @@ param apiCenter object = {
   // mcp-existing
   transportType?: 'streamable'
   subscriptionRequired?: bool
+  subscriptionKeyHeaderName?: string   // 'api-key' (default) or 'Ocp-Apim-Subscription-Key' (mcp-from-api, mcp-existing, a2a)
 
   // a2a
   agentId?: string
@@ -174,6 +175,7 @@ module mcpFromApi 'modules/publishMcpFromApi.bicep' = [for asset in publishAsset
     mcpDescription: asset.description
     mcpPath: asset.path
     mcpSubscriptionRequired: asset.?subscriptionRequired ?? true
+    subscriptionKeyHeaderName: asset.?subscriptionKeyHeaderName ?? 'api-key'
     mcpPolicyXml: asset.?policyXml ?? ''
   }
   dependsOn: [
@@ -195,6 +197,7 @@ module mcpExisting 'modules/publishMcpExisting.bicep' = [for asset in publishAss
     mcpPath: asset.path
     mcpTransportType: asset.?transportType ?? 'streamable'
     mcpSubscriptionRequired: asset.?subscriptionRequired ?? true
+    subscriptionKeyHeaderName: asset.?subscriptionKeyHeaderName ?? 'api-key'
     mcpPolicyXml: asset.?policyXml ?? ''
   }
   dependsOn: [
