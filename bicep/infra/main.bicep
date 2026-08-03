@@ -1130,6 +1130,8 @@ module logicApp './modules/logicapp/logicapp.bicep' = {
     cosmosDBContainerUsageName: cosmosDb.outputs.cosmosDbContainerName
     cosmosDBContainerPIIName: cosmosDb.outputs.cosmosDbPiiUsageContainerName
     cosmosDBContainerLLMUsageName: cosmosDb.outputs.cosmosDbLLMUsageContainerName
+    cosmosDBContainerMCPUsageName: cosmosDb.outputs.cosmosDbMcpUsageContainerName
+    cosmosDBContainerAgentUsageName: cosmosDb.outputs.cosmosDbAgentUsageContainerName
     eventHubPIIName: eventHub.outputs.eventHubPIIName
     apimAppInsightsName: monitoring.outputs.apimApplicationInsightsName
     functionAppSubnetId: useExistingVnet ? vnetExisting.outputs.functionAppSubnetId : vnet.outputs.functionAppSubnetId

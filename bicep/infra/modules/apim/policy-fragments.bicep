@@ -60,6 +60,30 @@ resource raiseAlertEventsPolicyFragment 'Microsoft.ApiManagement/service/policyF
   }
 }
 
+// Publish Contract usage fragments (Tools/MCP and Agents/A2A). Emit request-count metrics to
+// dedicated App Insights namespaces (mcp-usage / a2a-usage) that scheduled Logic Apps aggregate
+// into Cosmos. Registered here so a freshly deployed gateway already has them; the
+// citadel-publish-contracts deployment also (idempotently) ensures they exist.
+resource mcpUsagePolicyFragment 'Microsoft.ApiManagement/service/policyFragments@2022-08-01' = {
+  parent: apimService
+  name: 'mcp-usage'
+  properties: {
+    description: 'Tracks usage of published Tools (MCP) as App Insights custom metrics (mcp-usage namespace)'
+    value: loadTextContent('./policies/frag-mcp-usage.xml')
+    format: 'rawxml'
+  }
+}
+
+resource a2aUsagePolicyFragment 'Microsoft.ApiManagement/service/policyFragments@2022-08-01' = {
+  parent: apimService
+  name: 'a2a-usage'
+  properties: {
+    description: 'Tracks usage of published Agents (A2A) as App Insights custom metrics (a2a-usage namespace)'
+    value: loadTextContent('./policies/frag-a2a-usage.xml')
+    format: 'rawxml'
+  }
+}
+
 resource piiAnonymizationPolicyFragment 'Microsoft.ApiManagement/service/policyFragments@2022-08-01' = {
   parent: apimService
   name: 'pii-anonymization'

@@ -58,6 +58,8 @@ Every LLM backend created by `Backend Contract` onboarding gets a circuit breake
 2. **`circuitBreakerDefaults`** (object) — the rule applied to **every** backend when the toggle is on.
 3. **Per-backend `circuitBreaker`** (object, optional) — overrides a subset of the defaults for one backend, or disables it with `enabled: false`.
 
+> **Published assets use the same model.** Backends created for remote MCP servers and A2A agents by the [Publish Contract](../bicep/infra/citadel-publish-contracts/publish-contract-guide.md#3-resiliency) reuse the identical `configureCircuitBreaker` / `circuitBreakerDefaults` / per-asset `backend.circuitBreaker` parameters, so tool and agent endpoints get the same fail-fast protection as LLM backends.
+
 The default rule (backward-compatible with the original hard-coded values):
 
 ```bicep

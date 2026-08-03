@@ -51,6 +51,12 @@ param piiUsageContainerName string = 'pii-usage-container'
 @description('LLM usage container name.')
 param llmUsageContainerName string = 'llm-usage-container'
 
+@description('Published Tools (MCP) usage container name.')
+param mcpUsageContainerName string = 'mcp-usage-container'
+
+@description('Published Agents (A2A) usage container name.')
+param agentUsageContainerName string = 'agent-usage-container'
+
 @description('Model pricing container name.')
 param pricingContainerName string = 'model-pricing'
 
@@ -86,6 +92,8 @@ var partitionKeys = {
   '${containerName}': '/productName'
   '${piiUsageContainerName}': '/type'
   '${llmUsageContainerName}': '/productName'
+  '${mcpUsageContainerName}': '/productName'
+  '${agentUsageContainerName}': '/productName'
   '${pricingContainerName}': '/model'
   '${streamingExportConfigContainerName}': '/type'
 }
@@ -94,6 +102,8 @@ var containerNames = [
   containerName
   piiUsageContainerName
   llmUsageContainerName
+  mcpUsageContainerName
+  agentUsageContainerName
   pricingContainerName
   streamingExportConfigContainerName
 ]
@@ -187,6 +197,12 @@ output cosmosDbPiiUsageContainerName string = piiUsageContainerName
 
 @description('LLM usage container name.')
 output cosmosDbLLMUsageContainerName string = llmUsageContainerName
+
+@description('Published Tools (MCP) usage container name.')
+output cosmosDbMcpUsageContainerName string = mcpUsageContainerName
+
+@description('Published Agents (A2A) usage container name.')
+output cosmosDbAgentUsageContainerName string = agentUsageContainerName
 
 @description('Streaming export config container name.')
 output cosmosDbStreamingExportConfigContainerName string = streamingExportConfigContainerName

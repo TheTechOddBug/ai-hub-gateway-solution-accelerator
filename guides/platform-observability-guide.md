@@ -260,6 +260,8 @@ For long-term, richly structured usage analytics and **cost attribution / charge
 
 **Non-LLM Usage**: It is not activated by default, but it can be activated through referencing `ai-usage` policy fragment in the access contract. This policy relies on `log-to-eventhub` policy to send the usage data to Event Hub, which is then processed by the same Logic App workflow and written to Cosmos DB.
 
+**Published assets (Tools/MCP & Agents/A2A)**: the [Publish Contract](../bicep/infra/citadel-publish-contracts/publish-contract-guide.md#5-usage-tracking) tracks usage the **same way as LLM** — inbound `emit-metric` calls to the `mcp-usage` / `a2a-usage` App Insights namespaces (tool/agent name carried on the `deploymentName` dimension). Two dedicated scheduled Logic App workflows (`mcp-usage-ingestion`, `agent-usage-ingestion`) read those custom metrics and write request-count records into the `mcp-usage-container` / `agent-usage-container` Cosmos collections. **No Event Hub / `log-to-eventhub` is involved** — this keeps MCP streaming intact (MCP policies never read the response body).
+
 **Pricing join & visualization.** A second `model-pricing` container holds per-token-type unit costs; the Power BI report joins usage against pricing to compute cost. The report template, data model, custom-dimension activation, and PTU/fixed-cost handling are documented in detail in the dedicated guide.
 
 > 🔗 **See:** [**Power BI Dashboard Guide**](./power-bi-dashboard.md) for the complete data model, pricing setup, custom dimensions, and step-by-step report configuration.
