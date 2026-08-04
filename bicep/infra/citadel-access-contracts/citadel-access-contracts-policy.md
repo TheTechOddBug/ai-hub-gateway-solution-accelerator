@@ -26,21 +26,21 @@ An access contract can grant a **single product** access to a mix of asset types
 
     <choose>
         <!-- LLM: model RBAC + token capacity (existing behavior) -->
-        <when condition="@(context.Variables.GetValueOrDefault<string>(&quot;assetKind&quot;,&quot;llm&quot;) == &quot;llm&quot;)">
+        <when condition="@(context.Variables.GetValueOrDefault<string>("assetKind","llm") == "llm")">
             <include-fragment fragment-id="set-llm-requested-model" />
             <set-variable name="allowedModels" value="gpt-4o,gpt-4.1" />
             <include-fragment fragment-id="validate-model-access" />
             <llm-token-limit counter-key="@(context.Subscription.Id)" tokens-per-minute="10000" estimate-prompt-tokens="false" token-quota="1000000" token-quota-period="Monthly" />
         </when>
         <!-- TOOL (MCP): request-based rate limit + call quota -->
-        <when condition="@(context.Variables.GetValueOrDefault<string>(&quot;assetKind&quot;,&quot;&quot;) == &quot;tool&quot;)">
-            <rate-limit-by-key calls="60" renewal-period="60" counter-key="@(context.Subscription.Id + &quot;:tool&quot;)" />
-            <quota-by-key calls="100000" renewal-period="2592000" counter-key="@(context.Subscription.Id + &quot;:tool&quot;)" />
+        <when condition="@(context.Variables.GetValueOrDefault<string>("assetKind","") == "tool")">
+            <rate-limit-by-key calls="60" renewal-period="60" counter-key="@(context.Subscription.Id + ":tool")" />
+            <quota-by-key calls="100000" renewal-period="2592000" counter-key="@(context.Subscription.Id + ":tool")" />
         </when>
         <!-- AGENT (A2A): request-based rate limit + call quota -->
-        <when condition="@(context.Variables.GetValueOrDefault<string>(&quot;assetKind&quot;,&quot;&quot;) == &quot;agent&quot;)">
-            <rate-limit-by-key calls="30" renewal-period="60" counter-key="@(context.Subscription.Id + &quot;:agent&quot;)" />
-            <quota-by-key calls="50000" renewal-period="2592000" counter-key="@(context.Subscription.Id + &quot;:agent&quot;)" />
+        <when condition="@(context.Variables.GetValueOrDefault<string>("assetKind","") == "agent")">
+            <rate-limit-by-key calls="30" renewal-period="60" counter-key="@(context.Subscription.Id + ":agent")" />
+            <quota-by-key calls="50000" renewal-period="2592000" counter-key="@(context.Subscription.Id + ":agent")" />
         </when>
     </choose>
 </inbound>
