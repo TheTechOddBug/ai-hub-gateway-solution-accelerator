@@ -12,10 +12,10 @@ param useTargetAzureKeyVault bool = true
 @description('Use case descriptor used in naming: <code>-<businessUnit>-<useCaseName>-<environment>')
 param useCase object
 
-@description('Map of service codes to their API names in APIM. Example: { OAI: ["azure-openai-service-api"], DOC: ["document-intelligence-api"] }')
+@description('Map of service codes to their API names in APIM. Example: { LLM: ["universal-llm-api","azure-openai-api","unified-ai-api"], MULTI: ["universal-llm-api","weather-tool","hr-chat-agent"] }. A code may mix LLM inference APIs with published Tools (MCP) and Agents (A2A).')
 param apiNameMapping object
 
-@description('Required AI services for this use case. Each item: { code: "OAI", endpointSecretName: "OAI_ENDPOINT", apiKeySecretName: "OAI_KEY", policyXmlPath?: "path/to/policy.xml" }')
+@description('Required AI services for this use case. Each item: { code: "LLM", endpointSecretName: "LLM_ENDPOINT", apiKeySecretName: "LLM_KEY", policyXml?: "..." }. code drives the product prefix and naming: use LLM / TOOL / AGENT for a single asset type, or MULTI when a single product grants more than one asset type (e.g. MULTI-HR-ChatAgent-DEV). TOOL/AGENT/MULTI default to the asset-type-aware product policy; LLM keeps the existing LLM policy (backward compatible).')
 param services array
 
 @description('Optional product terms shown to subscribers')
@@ -104,8 +104,10 @@ param additionalFoundries array = []
 
 var productPostfix = '${useCase.businessUnit}-${useCase.useCaseName}-${useCase.environment}'
 
-// Default APIM product policy (applied when a service item does not provide policyXmlPath)
+// Default APIM product policy (applied when a service item does not provide policyXml).
+// LLM-only contracts keep the existing LLM policy; TOOL/AGENT/MULTI contracts get the asset-type-aware policy.
 var defaultProductPolicyXml = loadTextContent('./policies/default-ai-product-policy.xml')
+var defaultMultiProductPolicyXml = loadTextContent('./policies/default-multi-product-policy.xml')
 
 // Fresh key used to regenerate the NON-active subscription key when keyRotationEnabled is true.
 // Derived from rotationKeySeed (defaults to newGuid()) into a 64-char value, or taken verbatim from rotationKeyOverride.
@@ -153,8 +155,8 @@ module onboard 'modules/apimOnboardService.bicep' = [for s in services: {
     productDescription: 'AI Gateway product for ${s.code} - ${useCase.useCaseName}'
     productTerms: productTerms
     apiNames: apiNameMapping[s.code]
-    // Use provided policy XML or default
-    productPolicyXml: contains(s, 'policyXml') && !empty(s.policyXml) ? s.policyXml : defaultProductPolicyXml
+    // Use provided policy XML, else the asset-type-aware default for TOOL/AGENT/MULTI, else the LLM default
+    productPolicyXml: contains(s, 'policyXml') && !empty(s.policyXml) ? s.policyXml : (contains(['TOOL', 'AGENT', 'MULTI'], toUpper(s.code)) ? defaultMultiProductPolicyXml : defaultProductPolicyXml)
     subscriptionName: '${s.code}-${productPostfix}-SUB-01'
     subscriptionDisplayName: '${s.code}-${productPostfix}-SUB-01'
     // Key rotation controls (primary gateway owns/regenerates the keys)

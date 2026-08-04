@@ -8,7 +8,7 @@ The **Publish Contract** is the mechanism the Citadel Governance Hub uses to onb
 | **Access Contract** | *Who* may access an AI asset and under what limits? | `bicep/infra/citadel-access-contracts/` |
 | **Publish Contract** (this) | *What* AI assets (tools/agents) are published and protected? | `bicep/infra/citadel-publish-contracts/` |
 
-> **Phase 1 (this iteration)** establishes the Publish Contract: endpoints, per-asset backends, baseline policies, usage tracking, and optional API Center registration. **Phase 2** will extend the Access Contract to govern access to these published assets (introducing a `MULTI-` product prefix and conditional per-asset-type policy execution). Publishing therefore does **not** create APIM Products/Subscriptions today.
+> **Publishing vs. access.** The Publish Contract establishes the asset: endpoints, per-asset backends, baseline policies, usage tracking, and optional API Center registration. **Granting access** is the job of the [Access Contract](../citadel-access-contracts/), which now governs published Tools/Agents alongside LLMs — a single product can grant a mix of asset types (prefix `MULTI-`) and applies **conditional per-asset-type** policies (model RBAC + token limits for LLM; request-based rate limits for Tools/Agents). Publishing itself does **not** create APIM Products/Subscriptions.
 
 ---
 

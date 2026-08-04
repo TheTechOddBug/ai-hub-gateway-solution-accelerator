@@ -84,6 +84,19 @@ resource a2aUsagePolicyFragment 'Microsoft.ApiManagement/service/policyFragments
   }
 }
 
+// Access Contract asset-kind classifier. Lets a single product policy that mixes asset types apply the
+// right controls per request (llm / tool / agent). Driven by contractToolApis / contractAgentApis
+// variables the product policy sets; defaults to 'llm' so existing LLM-only contracts are unaffected.
+resource setAssetKindPolicyFragment 'Microsoft.ApiManagement/service/policyFragments@2022-08-01' = {
+  parent: apimService
+  name: 'set-asset-kind'
+  properties: {
+    description: 'Classifies the current request as llm | tool | agent for asset-type-aware access-contract product policies'
+    value: loadTextContent('./policies/frag-set-asset-kind.xml')
+    format: 'rawxml'
+  }
+}
+
 resource piiAnonymizationPolicyFragment 'Microsoft.ApiManagement/service/policyFragments@2022-08-01' = {
   parent: apimService
   name: 'pii-anonymization'

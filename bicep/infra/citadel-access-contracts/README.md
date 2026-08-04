@@ -6,6 +6,7 @@ Automate the onboarding of AI use cases to your APIM-based AI Gateway with a str
 
 This package eliminates manual APIM configuration by providing:
 - 📦 **Automated Product Creation**: Per-service APIM products with naming `<serviceCode>-<BU>-<UseCase>-<ENV>`
+- 🧩 **Mixed asset types**: a single product can grant **LLM + Tools (MCP) + Agents (A2A)** together (prefix `MULTI-`), with policies applied **conditionally per asset type**
 - 🔌 **API Integration**: Automatic API attachment to product with custom or default policies
 - 🔑 **Subscription Management**: Auto-generated subscription with secure API keys
 - 🔐 **Flexible Secret Storage**: Optional Azure Key Vault integration or direct credential output
@@ -17,7 +18,7 @@ This package eliminates manual APIM configuration by providing:
 
 | Resource | Naming Pattern | Description |
 |----------|----------------|-------------|
-| **APIM Product** | `{code}-{BU}-{UseCase}-{ENV}` | Product per service (e.g., `LLM-Healthcare-PatientAssistant-DEV`) with attached APIs and policies |
+| **APIM Product** | `{code}-{BU}-{UseCase}-{ENV}` | Product per service (e.g., `LLM-Healthcare-PatientAssistant-DEV`). `code` is the asset-type prefix: `LLM` / `TOOL` / `AGENT` for a single type, or `MULTI` when one product grants more than one type (e.g. `MULTI-HR-ChatAgent-DEV`) |
 | **APIM Subscription** | `{product}-SUB-01` | Subscription with API key |
 | **Key Vault Secrets** | `{secretName}` | Endpoint URL and API key (optional) |
 | **Foundry Connection** | `{prefix}-{code}` | APIM connection for Microsoft Foundry agents (optional) |
@@ -45,6 +46,22 @@ A single access contract can optionally be mirrored across **additional APIM gat
 > ✅ **Fully backward compatible** — all of these are optional parameters that default to empty. **Existing access contracts continue to deploy and behave exactly as before with no changes.**
 
 👉 See the [Business Continuity & Resiliency Guide](./access-contract-resiliency-guide.md) for configuration, examples, deployment order, key rotation, and troubleshooting.
+
+---
+
+## 🧩 Governing Tools (MCP) & Agents (A2A) — mixed asset contracts
+
+Assets published through the [Publish Contract](../citadel-publish-contracts/) (Tools/MCP and Agents/A2A) are governed by an access contract exactly like LLM APIs. A **single product** can grant access to any mix of the three asset types; the product policy classifies each request and applies the right controls.
+
+- **Product prefix**: `LLM` / `TOOL` / `AGENT` for a single asset type; `MULTI` when a contract grants **two or more** types (e.g. `MULTI-HR-ChatAgent-DEV`). The `code` field on the `services` entry drives this — no bicep change needed.
+- **`apiNameMapping[code]`** lists the union of granted APIs (LLM inference APIs + published Tool/Agent APIs).
+- **Conditional policy**: `TOOL` / `AGENT` / `MULTI` products default to [`policies/default-multi-product-policy.xml`](./policies/default-multi-product-policy.xml), which includes the **`set-asset-kind`** fragment and a `<choose>` that applies:
+  - **LLM** → model RBAC (`validate-model-access`) + `llm-token-limit` (TPM + quota)
+  - **Tool / Agent** → request-based `rate-limit-by-key` (calls/min) + `quota-by-key` (call quota)
+  - **Common** (any type) → opt-in `llm-content-safety`, alerting, etc.
+- **Asset-kind detection**: APIM does not expose the API type to policy, so the product policy sets `contractToolApis` / `contractAgentApis` (comma-separated API resource names) before including `set-asset-kind`; anything unlisted defaults to `llm`.
+
+> ✅ **Backward compatible** — `LLM` contracts keep the existing LLM product policy untouched. See [citadel-access-contracts-policy.md](./citadel-access-contracts-policy.md) for the policy snippets.
 
 ---
 

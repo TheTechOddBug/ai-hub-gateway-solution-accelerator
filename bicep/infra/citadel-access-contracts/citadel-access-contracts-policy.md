@@ -6,6 +6,54 @@ This guide to expand on what policies are available out of the box for use with 
 
 The following policy snippets can be applied as needed for the product policy access as part of the `Citadel Access Contracts`:
 
+### Asset-Type-Aware Policies (LLM + Tools + Agents in one product)
+
+An access contract can grant a **single product** access to a mix of asset types — LLM inference APIs, published **Tools (MCP)**, and published **Agents (A2A)**. Because APIM does not expose the API *type* to policy at runtime, the product policy classifies each request with the **`set-asset-kind`** fragment and branches with a `<choose>`.
+
+**Product prefix** follows the asset mix: `LLM` / `TOOL` / `AGENT` for a single type, or **`MULTI`** for two or more (e.g. `MULTI-HR-ChatAgent-DEV`). `TOOL` / `AGENT` / `MULTI` products default to [`policies/default-multi-product-policy.xml`](./policies/default-multi-product-policy.xml).
+
+**Classification** — list the granted API **resource names** per type before including the fragment; anything unlisted defaults to `llm` (so LLM-only contracts are unaffected):
+
+```xml
+<inbound>
+    <base />
+    <!-- COMMON POLICIES (any asset type) go here, e.g. opt-in content safety -->
+
+    <!-- Classify the request as llm | tool | agent -->
+    <set-variable name="contractToolApis" value="weather-tool,ms-learn-tool" />
+    <set-variable name="contractAgentApis" value="hr-chat-agent" />
+    <include-fragment fragment-id="set-asset-kind" />
+
+    <choose>
+        <!-- LLM: model RBAC + token capacity (existing behavior) -->
+        <when condition="@(context.Variables.GetValueOrDefault<string>(&quot;assetKind&quot;,&quot;llm&quot;) == &quot;llm&quot;)">
+            <include-fragment fragment-id="set-llm-requested-model" />
+            <set-variable name="allowedModels" value="gpt-4o,gpt-4.1" />
+            <include-fragment fragment-id="validate-model-access" />
+            <llm-token-limit counter-key="@(context.Subscription.Id)" tokens-per-minute="10000" estimate-prompt-tokens="false" token-quota="1000000" token-quota-period="Monthly" />
+        </when>
+        <!-- TOOL (MCP): request-based rate limit + call quota -->
+        <when condition="@(context.Variables.GetValueOrDefault<string>(&quot;assetKind&quot;,&quot;&quot;) == &quot;tool&quot;)">
+            <rate-limit-by-key calls="60" renewal-period="60" counter-key="@(context.Subscription.Id + &quot;:tool&quot;)" />
+            <quota-by-key calls="100000" renewal-period="2592000" counter-key="@(context.Subscription.Id + &quot;:tool&quot;)" />
+        </when>
+        <!-- AGENT (A2A): request-based rate limit + call quota -->
+        <when condition="@(context.Variables.GetValueOrDefault<string>(&quot;assetKind&quot;,&quot;&quot;) == &quot;agent&quot;)">
+            <rate-limit-by-key calls="30" renewal-period="60" counter-key="@(context.Subscription.Id + &quot;:agent&quot;)" />
+            <quota-by-key calls="50000" renewal-period="2592000" counter-key="@(context.Subscription.Id + &quot;:agent&quot;)" />
+        </when>
+    </choose>
+</inbound>
+```
+
+**Why request-based limits for Tools/Agents?** `llm-token-limit` counts LLM tokens, which don't exist for a tool call or an agent turn. Tools and Agents are throttled by **request count** instead: `rate-limit-by-key` (calls per period) + `quota-by-key` (long-term call quota). The `calls` / `renewal-period` values are baked per contract (like `llm-token-limit`'s TPM/quota).
+
+**Common policies** — anything that should run for *every* asset type (e.g. opt-in [content safety](#content-safety-policy), custom alerting) goes **before** the `set-asset-kind` classification so it applies regardless of `assetKind`.
+
+**Usage metrics** are emitted by the API-level baseline policies (`llm-usage` for LLM, `mcp-usage` / `a2a-usage` for published Tools/Agents), so the product policy focuses on access control and throttling only.
+
+> ✅ **Backward compatible** — existing `LLM-` contracts keep the LLM product policy and never include `set-asset-kind`.
+
 ### Model Access Control Policy
 
 The model access control policy restricts which LLM models a product can access. This is implemented using the `validate-model-access` policy fragment.
