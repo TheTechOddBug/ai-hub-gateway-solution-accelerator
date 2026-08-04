@@ -84,6 +84,34 @@ metadata: {
 
 API keys are stored as APIM **named values** — prefer `keyVaultSecretUri` (rotatable, auditable) over inline `secretValue`.
 
+### Folder structure & source control
+
+Organize publish contracts by **name** and **environment** — the same layout used by the [Access Contract](../citadel-access-contracts/README.md) — so each contract is a self-contained, reviewable unit:
+
+```
+citadel-publish-contracts/
+├── main.bicep                          # the module (do not edit per-contract)
+├── main.bicepparam                     # reference sample (using 'main.bicep')
+└── contracts/                          # per-contract publish definitions (git-ignored by default)
+    └── <contract-name>/
+        └── <env>/
+            └── main.bicepparam         # using '../../../main.bicep'
+```
+
+- **`contracts/<contract-name>/<env>/main.bicepparam`** — one folder per environment. The `using` points **three levels up** to the module (`using '../../../main.bicep'`).
+- The `contracts/` tree is **git-ignored** in this accelerator (like `citadel-access-contracts/contracts`) because generated params carry environment-specific ids; teams source-control their own contracts in their repo/branch following this layout.
+- The validation notebook writes its generated publish contract to `contracts/sample-assets/dev/main.bicepparam` and the paired access contract to `citadel-access-contracts/contracts/<biz>-<usecase>/<env>/`.
+
+Deploy a contract from its folder:
+
+```bash
+az deployment sub create \
+  --name publish-<contract-name>-<env> \
+  --location <region> \
+  --template-file bicep/infra/citadel-publish-contracts/main.bicep \
+  --parameters bicep/infra/citadel-publish-contracts/contracts/<contract-name>/<env>/main.bicepparam
+```
+
 ---
 
 ## 3. Resiliency

@@ -34,17 +34,26 @@ bicep/infra/citadel-publish-contracts/
 └── policies/
     ├── baseline-mcp-policy.xml     # Default MCP policy (auth + usage; no response-body reads)
     └── baseline-a2a-policy.xml     # Default A2A policy (auth + usage)
+
+contracts/                          # per-contract definitions (git-ignored; see below)
+└── <contract-name>/<env>/main.bicepparam   # using '../../../main.bicep'
 ```
+
+### Folder structure & source control
+
+Like the [Access Contract](../citadel-access-contracts/README.md), each publish contract lives under `contracts/<contract-name>/<env>/main.bicepparam` (the `using` points three levels up to `main.bicep`). The `contracts/` tree is **git-ignored** in this accelerator (generated params carry environment-specific ids); teams source-control their own contracts in their repo following this layout. The validation notebook writes its generated contract to `contracts/sample-assets/dev/`.
 
 ## Deploy
 
 ```powershell
 az deployment sub create `
-  --name citadel-publish-contracts `
+  --name publish-sample-assets-dev `
   --location <region> `
   --template-file bicep/infra/citadel-publish-contracts/main.bicep `
-  --parameters bicep/infra/citadel-publish-contracts/main.bicepparam
+  --parameters bicep/infra/citadel-publish-contracts/contracts/<contract-name>/<env>/main.bicepparam
 ```
+
+> The root [main.bicepparam](./main.bicepparam) is a reference sample (`using 'main.bicep'`); real contracts live under `contracts/<contract-name>/<env>/` (`using '../../../main.bicep'`).
 
 ## Resiliency
 
