@@ -89,7 +89,7 @@ resource unifiedAiProduct 'Microsoft.ApiManagement/service/products@2024-06-01-p
     displayName: 'Unified AI Gateway'
     description: 'Unified AI Gateway product - provides access to all AI model providers through a single wildcard endpoint.'
     subscriptionRequired: true
-    approvalRequired: false
+    approvalRequired: true
     subscriptionsLimit: 10
     state: 'published'
   }

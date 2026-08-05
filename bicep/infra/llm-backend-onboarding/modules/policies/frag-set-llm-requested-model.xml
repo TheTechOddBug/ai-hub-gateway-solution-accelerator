@@ -21,11 +21,22 @@
         {
             var method = context.Request.Method;
 
-            // GET and DELETE requests are non-LLM operations (listing models, deleting responses)
-            if (method.Equals("GET", StringComparison.OrdinalIgnoreCase) ||
-                method.Equals("DELETE", StringComparison.OrdinalIgnoreCase))
+            // GET requests are non-LLM operations (listing models/deployments/files).
+            if (method.Equals("GET", StringComparison.OrdinalIgnoreCase))
             {
                 return "non-llm-request";
+            }
+
+            // DELETE: file deletes (DELETE /files/{id}) carry the routing model in the
+            // `x-ai-model` header, so resolve it so the request routes to a backend and
+            // access-contract RBAC still applies. Response deletes (DELETE /responses/{id})
+            // have no such header and are hydrated from cache downstream, so they stay
+            // non-LLM here. Mirrors the Unified AI request-processor so all three surfaces
+            // treat DELETE identically.
+            if (method.Equals("DELETE", StringComparison.OrdinalIgnoreCase))
+            {
+                var deleteHeaderModel = context.Request.Headers.GetValueOrDefault("x-ai-model", string.Empty);
+                return string.IsNullOrEmpty(deleteHeaderModel) ? "non-llm-request" : deleteHeaderModel;
             }
             
             // 1. Try deployment-id path parameter (Azure OpenAI named operations)
@@ -135,8 +146,8 @@
                 <set-body>@{
                     return new JObject(
                         new JProperty("error", new JObject(
-                            new JProperty("message", "Model could not be detected from request body or path"),
-                            new JProperty("type", "invalid_request_error"),
+                            new JProperty("message", "Model could not be detected from request body, x-ai-model header, or path"),
+                            new JProperty("type", "extraction_invalid_request_error"),
                             new JProperty("code", "missing_model_parameter"),
                             new JProperty("param", "model")
                         ))

@@ -238,6 +238,18 @@
 
                         // Look up path template: backend-path-templates[poolType][operation]
                         var backendTemplates = templates?[poolType] as JObject;
+
+                        // Files API family (files, files/{id}, files/{id}/content): the {id} and
+                        // /content suffixes are dynamic, so resolve the static 'files' template as
+                        // a base and append the remainder of the operation path. Mirrors the
+                        // Universal LLM ai-foundry rewrite (/models/files -> /openai/v1/files).
+                        if (operation.StartsWith("files", StringComparison.OrdinalIgnoreCase)) {
+                            var filesBase = backendTemplates?["files"]?.ToString();
+                            if (String.IsNullOrEmpty(filesBase)) { return String.Empty; }
+                            var suffix = operation.Length > "files".Length ? operation.Substring("files".Length) : String.Empty;
+                            return filesBase + suffix;
+                        }
+
                         var template = backendTemplates?[operation]?.ToString();
 
                         if (String.IsNullOrEmpty(template)) {

@@ -122,6 +122,7 @@
                 'chat/completions': '/openai/v1/chat/completions',
                 'embeddings': '/openai/v1/embeddings',
                 'responses': '/openai/v1/responses',
+                'files': '/openai/v1/files',
                 'images/generations': '/openai/v1/images/generations',
                 'images/edits': '/openai/v1/images/edits',
                 'models': '/openai/v1/models'
@@ -130,6 +131,7 @@
                 'chat/completions': '/openai/v1/chat/completions',
                 'embeddings': '/openai/v1/embeddings',
                 'responses': '/openai/v1/responses',
+                'files': '/openai/v1/files',
                 'images/generations': '/openai/v1/images/generations',
                 'images/edits': '/openai/v1/images/edits'
             },
