@@ -42,5 +42,9 @@ semantic-kernel[mcp]
 # Agent Framework
 agent-framework
 agent-framework-core
+# A2A client for consuming published A2A agents through the gateway (Citadel Publish Contract validation notebook)
+agent-framework-a2a
+a2a-sdk
+nest-asyncio
 langchain
 langchain-openai

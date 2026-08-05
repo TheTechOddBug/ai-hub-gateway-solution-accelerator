@@ -19,6 +19,7 @@ The recommended execution order is:
 9. **Extended Providers Backend Onboarding** — Onboard and validate non-Microsoft-Foundry AI backends (AWS Bedrock, GCP Gemini, Anthropic Claude) through native and OpenAI-compatible routing to confirm multi-cloud support
 10. **Session Affinity** — Validate backend-pool sticky routing for the stateful OpenAI Responses API — a per-session cookie jar keeps all requests in a session pinned to the same backend
 11. **Gateway Alerting** — Trigger real alerts: provision a restrictive access contract, force throttling (HTTP 429) *and* quota exhaustion (HTTP 403), deploy Azure Monitor metric alerts on the `AI Gateway Alert` custom metric, and verify the metrics + rules
+12. **Publish Contract** — Publish three protected AI assets (API→MCP tool, remote MCP tool, Foundry A2A agent), then validate MCP handshakes, the A2A agent card + JSON-RPC call, `mcp-usage`/`a2a-usage` custom metrics, and per-asset circuit breakers
 
 Each notebook is self-contained with initialization, deployment, testing, visualization, and cleanup stages, enabling both interactive exploration and repeatable validation.
 

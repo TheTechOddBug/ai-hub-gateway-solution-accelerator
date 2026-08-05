@@ -6,6 +6,8 @@ This quick reference guide provides a consistent and secure approach to managing
 
 For the full walkthrough, parameter reference, and architecture, see the [Access Contract Guide](./README.md).
 
+> 🧩 **Mixed asset types:** a contract can grant **LLM + Tools (MCP) + Agents (A2A)** in one product. Set the service `code` to `TOOL` / `AGENT` for a single published type, or `MULTI` when mixing types (e.g. `MULTI-HR-ChatAgent-DEV`), and list every granted API under `apiNameMapping[code]`. `TOOL` / `AGENT` / `MULTI` products get the asset-type-aware policy automatically. See [citadel-access-contracts-policy.md](./citadel-access-contracts-policy.md#asset-type-aware-policies-llm--tools--agents-in-one-product).
+
 ## 📁 Folder Structure
 
 Organize your access contracts by **business unit**, **use case**, and **environment** for clean source control and predictable deployments:

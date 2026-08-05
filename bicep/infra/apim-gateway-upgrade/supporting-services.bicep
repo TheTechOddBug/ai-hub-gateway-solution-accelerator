@@ -437,6 +437,10 @@ module logicApp 'services/logic-app.bicep' = if (provisionSupportingServices && 
     #disable-next-line BCP318
     cosmosDBContainerLLMUsageName: cosmosDb.outputs.cosmosDbLLMUsageContainerName
     #disable-next-line BCP318
+    cosmosDBContainerMCPUsageName: cosmosDb.outputs.cosmosDbMcpUsageContainerName
+    #disable-next-line BCP318
+    cosmosDBContainerAgentUsageName: cosmosDb.outputs.cosmosDbAgentUsageContainerName
+    #disable-next-line BCP318
     eventHubNamespaceName: eventHub.outputs.eventHubNamespaceName
     #disable-next-line BCP318
     eventHubName: eventHub.outputs.eventHubName

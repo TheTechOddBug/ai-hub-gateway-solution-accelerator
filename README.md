@@ -163,6 +163,14 @@ Leverage **Citadel Access Contracts** to declare the required access to LLMs, to
 
 >NOTE: Recommendation is to create one contract per business-unit/use-case/environment to allow for precise governance policies and better observability in the hub.
 
+#### Publish Contracts
+
+Leverage **Citadel Publish Contracts** to onboard and publish centrally protected AI assets — **Tools (MCP)** and **Agents (A2A)** — through the gateway with per-asset backends, resiliency, baseline policies, usage tracking, and optional API Center registration.
+
+[Publish contracts](bicep\infra\citadel-publish-contracts\README.md) are infrastructure-as-code declarations of the AI assets published on the gateway. See the [Publish Contract Guide](bicep\infra\citadel-publish-contracts\publish-contract-guide.md) for asset types, backend/auth options, and Foundry A2A publishing.
+
+>NOTE: Publishing an asset does not grant access to it — governed access (products/subscriptions) is handled by Access Contracts.
+
 #### Existing agents
 
 Guidance to bring existing agents is through updating endpoint and credentials to access central LLMs, tools and agents through the **unified gateway** endpoint and credentials that are produced by the access contract provisioning for each agent.
