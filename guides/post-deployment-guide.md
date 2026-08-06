@@ -128,7 +128,7 @@ This pairs with the [Access Contract resiliency feature](../bicep/infra/citadel-
 
 As the accelerator evolves, adopt new releases on an **already-provisioned** gateway using the **APIM Gateway Upgrade** submodule — it applies new policies, APIs, backends, fragments, named values, and the `/version` manifest **in place**, without re-provisioning APIM or the surrounding landing zone.
 
-**Plan the upgrade using version tracks.** The accelerator uses independent, component-scoped versions in [`release.json`](../release.json) (`master-version`, `routing-version`, `backend-contract-version`, `access-contract-version`, `gateway-upgrade-version`, `usage-ingestion-version`). Compare **each** track against what you run today and read the [Release Version Management Guide](./release-version-management.md) migration notes for any `MAJOR` bump.
+**Plan the upgrade using version tracks.** The accelerator uses independent, component-scoped versions in [`release.json`](../release.json) (`master-version`, `routing-version`, `backend-contract-version`, `access-contract-version`, `publish-contract-version`, `gateway-upgrade-version`, `usage-ingestion-version`). Compare **each** track against what you run today and read the [Release Version Management Guide](./release-version-management.md) migration notes for any `MAJOR` bump or Preview track change.
 
 **Confirm what is deployed at runtime** (no source inspection needed):
 
@@ -145,6 +145,8 @@ curl https://<your-apim-gateway-host>/version/backend-contract
 4. Deploy the upgrade, then re-run [Backend Contract onboarding](#1-onboard-llm-backends-backend-contract) if routing fragments changed, and re-check `/version`.
 
 > ⚠️ The `gateway-upgrade-version` track is currently `-preview` — pin to an exact version in production and validate before upgrading.
+
+> ⚠️ The `publish-contract-version` track is also `-preview` — review and validate MCP/A2A contract changes before re-deploying published assets.
 
 📘 Module: [`bicep/infra/apim-gateway-upgrade`](../bicep/infra/apim-gateway-upgrade/README.md) · Guide: [Release Version Management](./release-version-management.md)
 

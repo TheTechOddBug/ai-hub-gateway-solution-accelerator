@@ -25,12 +25,13 @@ ingestion).
 
 ```jsonc
 {
-    "master-version": "1.0.0",
+    "master-version": "1.0.2",
     "routing-version": "1.0.0",
-    "backend-contract-version": "1.0.0",
-    "access-contract-version": "1.0.0",
+    "backend-contract-version": "1.1.0",
+    "access-contract-version": "1.2.0",
+    "publish-contract-version": "1.0.0-preview",
     "gateway-upgrade-version": "1.0.0-preview",
-    "usage-ingestion-version": "1.0.0"
+    "usage-ingestion-version": "1.1.0"
 }
 ```
 
@@ -54,6 +55,7 @@ optional pre-release suffix (for example `-preview`):
 | **`routing-version`** | The LLM request routing logic — backend pool selection, model-to-backend resolution, load balancing, failover, alias fallback, and the dynamic routing policy fragments. | Changes to `llm-policy-fragments.*`, `llm-backend-pools.bicep`, routing/target policies. | `bicep/infra/modules/apim` |
 | **`backend-contract-version`** | The shape of the **backend configuration contract** (`llmBackendConfig`) consumed during onboarding — backend types, auth types, model object properties, circuit breaker defaults. | Changes to the `llmBackendConfig` schema or `llm-backend-onboarding` parameter surface. | `bicep/infra/llm-backend-onboarding` |
 | **`access-contract-version`** | The shape of the **Citadel Access Contract** — product policies, JWT/subscription access patterns, per-use-case product definitions, and the access-contract parameter surface. | Changes to `citadel-access-contracts` schema, product policy templates, or access-pattern behavior. | `bicep/infra/citadel-access-contracts` |
+| **`publish-contract-version`** | The shape of the **Citadel Publish Contract** for publishing Tools (MCP) and Agents (A2A), including Foundry-hosted A2A agents. Currently `-preview`. | Changes to publish asset schemas, baseline policies, backend/auth options, usage tracking, or API Center integration. | `bicep/infra/citadel-publish-contracts` |
 | **`gateway-upgrade-version`** | The in-place **APIM Gateway Upgrade** tooling used to update an existing gateway without re-provisioning. Currently `-preview`. | Changes to `bicep/infra/apim-gateway-upgrade`. | `bicep/infra/apim-gateway-upgrade` |
 | **`usage-ingestion-version`** | The **usage ingestion pipeline** — Logic App workflows and the usage-ingestion Function that process usage/log streams into the reporting store. | Changes to `src/usage-ingestion-logicapp`, the usage-ingestion function, or the ingestion data contract. | `src/usage-ingestion-*` |
 
@@ -234,6 +236,16 @@ The Citadel Access Contract product/policy surface changed.
 - Re-deploy the access contracts; validate JWT and subscription access patterns per use case with
   the access-contract validation notebooks.
 - See [AI Citadel Access Contracts](../bicep/infra/citadel-access-contracts/README.md).
+
+### `publish-contract-version` (`-preview` / MAJOR)
+
+The Publish Contract surface for MCP and A2A assets is available in Preview and may evolve.
+
+- Pin to the exact Preview version you validated and deploy to a non-production gateway first.
+- Review each Publish Contract parameter file when the schema, baseline policies, backend/auth options,
+  or usage tracking changes; re-deploy affected published assets.
+- Validate MCP handshakes and A2A agent-card/JSON-RPC flows before promotion.
+- See the [Citadel Publish Contract Guide](../bicep/infra/citadel-publish-contracts/publish-contract-guide.md).
 
 ### `gateway-upgrade-version` (`-preview`)
 

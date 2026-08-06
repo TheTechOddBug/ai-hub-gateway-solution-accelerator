@@ -163,13 +163,13 @@ Leverage **Citadel Access Contracts** to declare the required access to LLMs, to
 
 >NOTE: Recommendation is to create one contract per business-unit/use-case/environment to allow for precise governance policies and better observability in the hub.
 
-#### Publish Contracts
+#### Publish Contracts (Preview)
 
 Leverage **Citadel Publish Contracts** to onboard and publish centrally protected AI assets — **Tools (MCP)** and **Agents (A2A)** — through the gateway with per-asset backends, resiliency, baseline policies, usage tracking, and optional API Center registration.
 
 [Publish contracts](bicep\infra\citadel-publish-contracts\README.md) are infrastructure-as-code declarations of the AI assets published on the gateway. See the [Publish Contract Guide](bicep\infra\citadel-publish-contracts\publish-contract-guide.md) for asset types, backend/auth options, and Foundry A2A publishing.
 
->NOTE: Publishing an asset does not grant access to it — governed access (products/subscriptions) is handled by Access Contracts.
+>NOTE: Publish Contracts and Foundry-hosted A2A publishing are available in Preview (`publish-contract-version: 1.0.0-preview`). Publishing an asset does not grant access to it — governed access (products/subscriptions) is handled by Access Contracts.
 
 #### Existing agents
 
@@ -199,12 +199,13 @@ For detailed guidance and technical implementation, see [AI App Landing Zone Rep
 
 ## 🔄 Governance Hub Operations - Contract-Driven Governance
 
-Day-to-day operation of the Citadel Governance Hub is **contract-driven**: every change to what the gateway serves and who can consume it is declared as version-controlled infrastructure-as-code (`.bicepparam` files) rather than manual portal configuration. Two complementary contract types govern the two sides of the gateway:
+Day-to-day operation of the Citadel Governance Hub is **contract-driven**: every change to what the gateway serves and who can consume it is declared as version-controlled infrastructure-as-code (`.bicepparam` files) rather than manual portal configuration. Three complementary contract types govern the gateway lifecycle:
 
 - **🔌 Backend Contracts** — govern the **supply side**: which LLM backends and models the gateway can route to.
+- **📤 Publish Contracts (Preview)** — govern which Tools (MCP) and Agents (A2A) are published through the gateway.
 - **📝 Access Contracts** — govern the **demand side**: which use cases and agents can consume those models, and under which policies.
 
-Together they create a clean separation of concerns: platform teams curate the available AI capacity once, while business units onboard use cases against that curated capacity without ever touching gateway internals.
+Together they create a clean separation of concerns: platform teams curate AI capacity and published assets, while business units onboard use cases against those governed assets without touching gateway internals.
 
 ```mermaid
 flowchart LR
@@ -212,6 +213,10 @@ flowchart LR
         B1[LLM Backends & Models]
         B2[Load Balancing & Failover]
         B3[Model Aliases]
+    end
+    subgraph Publishing["📤 Publish Contracts (Preview)"]
+        P1[Tools / MCP]
+        P2[Agents / A2A]
     end
     subgraph Gateway["🚪 AI Gateway (APIM)"]
         G1[Routing & Policy Engine]
@@ -221,7 +226,9 @@ flowchart LR
         A2[Per-use-case Policies]
         A3[Foundry / Key Vault Credentials]
     end
-    Supply --> Gateway --> Demand
+    Supply --> Gateway
+    Publishing --> Gateway
+    Gateway --> Demand
 ```
 
 ### 🔌 Backend Contracts — Onboard LLM backends and models
@@ -244,11 +251,11 @@ Declares the governed dependencies an agent or use case needs—LLMs, AI service
 
 > 🔗 **Learn More:** [AI Citadel Access Contracts Guide](./bicep/infra/citadel-access-contracts/README.md)
 
-### 📤 Publish Contracts (Upcoming)
+### 📤 Publish Contracts (Preview)
 
-Describes the tools and agents a spoke exposes **back** to the hub—publishing rules, ownership metadata, security posture, and discovery/cataloging in the AI Registry.
+Publishes Tools (MCP) and Agents (A2A) through the gateway with declarative endpoint and backend configuration, baseline policies, usage tracking, resiliency for supported backend types, and optional Azure API Center registration. Foundry-hosted agents can be exposed as A2A endpoints.
 
->NOTE: Publish contracts are upcoming and will be available in future releases.
+>NOTE: This capability is available in Preview (`publish-contract-version: 1.0.0-preview`). Its contract surface may change before general availability. See the [Publish Contract Guide](./bicep/infra/citadel-publish-contracts/publish-contract-guide.md).
 
 ### ✅ Why Contract-Driven Governance
 
@@ -338,12 +345,13 @@ Master AI Citadel Governance Hub implementation and operations with our detailed
 | [**🆕 APIM Gateway Upgrade Guide**](./bicep/infra/apim-gateway-upgrade/README.md) | Update gateway policies, APIs, backends, diagnostics, and named values on an existing APIM instance without re-provisioning infrastructure |
 | [**🆕 Release Version Management**](./guides/release-version-management.md) | Versioning model of the accelerator, the `/version` runtime endpoint, and how to plan and implement migrations |
 
-### 🔧 **Use-case Onboarding**
+### 🔧 **Operations Contracts**
 
 | Guide | Description |
 |-------|-------------|
 | [**🆕 AI Citadel Access Contracts Guide**](./bicep/infra/citadel-access-contracts/README.md) | Guide on integrating new/existing AI apps & agents with AI Citadel Governance Hub |
 | [**🆕 AI Citadel Access Contracts Policies**](./bicep/infra/citadel-access-contracts/citadel-access-contracts-policy.md) | Deep dive into policy configurations for AI Citadel Access Contracts |
+| [**🆕 AI Citadel Publish Contracts Guide (Preview)**](./bicep/infra/citadel-publish-contracts/README.md) | Guide on publishing Tools (MCP) and Agents (A2A) through the gateway with optional Foundry A2A publishing |
 
 
 ### 🛡️ **Security & Compliance**
