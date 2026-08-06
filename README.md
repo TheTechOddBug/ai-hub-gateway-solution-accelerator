@@ -32,13 +32,13 @@ The **AI Citadel Blueprint** is a unified, layered approach to AI security and c
 |-------|------|----------------|----------------|
 | 🔷 **Layer 1** | **Governance Hub** | Runtime enforcement — unified AI gateway, policy-as-code, identity validation, token rate limiting, content filtering, cost attribution | **👉 This Accelerator** ([aka.ms/ai-hub-gateway](https://aka.ms/ai-hub-gateway)) |
 | 🔶 **Layer 2** | **Agent Operations** | Agent runtime, observability & compliance — agent traces, AI evaluations, fleet operations, automated compliance checks | [Microsoft Foundry Agents & Control Plane](https://learn.microsoft.com/en-us/azure/ai-foundry/control-plane/overview) |
-| 🟢 **Layer 3** | **Agent Identity** | Agent identity & lifecycle governance and security — unique agent identities, blueprints, shadow agent detection, sponsorship model, access packages | [Governing Agent Identities with Agent 365](https://learn.microsoft.com/en-us/microsoft-agent-365/) |
+| 🟢 **Layer 3** | **Agent Management** | Agent identity & lifecycle governance and security — unique agent identities, blueprints, shadow agent detection, sponsorship model, access packages | [Governing Agent Identities with Agent 365](https://learn.microsoft.com/en-us/microsoft-agent-365/) |
 | 🛡️ **Layer 4** | **Security Foundation** | Unified protection — `Microsoft Defender` for AI threat intelligence, `Purview` for data governance, `Entra` for authentication and authorization | Microsoft Defender, Purview & Entra |
 
 The layers are not isolated silos — they form an integrated architecture grounded in the principle of **separation of concerns with unified oversight**.
 
 **Layer 1: Governance Hub** (this accelerator) acts as the runtime gateway through a hub-and-spoke deployment where a centrally managed AI gateway (Azure API Management) enforces runtime policies, while **Layer 2: Agent Operations** spoke environments give each business unit autonomous development within guardrails.
-Adding **Layer 3: Agent Identity** ensures that every agent has a unique, governable identity, while **Layer 4: Security Foundation** provides unified threat protection and data governance across the entire architecture.
+Adding **Layer 3: Agent Management** ensures that every agent has a unique, governable identity, while **Layer 4: Security Foundation** provides unified threat protection and data governance across the entire architecture.
 
 > 📎 For the full Citadel Blueprint approach and guidance, visit: [aka.ms/foundry-citadel](https://aka.ms/foundry-citadel)
 
