@@ -1,4 +1,4 @@
-using '../../../../main.bicep'
+using '../../main.bicep'
 
 // ============================================================================
 // Base Access Contract
@@ -31,6 +31,25 @@ param services = [
     policyXml: loadTextContent('ai-product-policy.xml')
   }
 ]
+
+// MULTI-ASSET ALTERNATIVE (one product granting LLM + Tool/MCP + Agent/A2A):
+// The contract shares ONE api-key (apiKeySecretName) and publishes an endpoint
+// secret PER asset. foundryApiName selects the LLM endpoint for the Foundry
+// connection. Set apiNameMapping.MULTI to the union of granted APIs.
+// param apiNameMapping = { MULTI: ['universal-llm-api', 'weather-tool', 'hr-chat-agent'] }
+// param services = [
+//   {
+//     code: 'MULTI'
+//     apiKeySecretName: 'HR-CHATAGENT-KEY'
+//     foundryApiName: 'universal-llm-api'
+//     assetEndpoints: [
+//       { apiName: 'universal-llm-api', endpointSecretName: 'HR-CHATAGENT-LLM-ENDPOINT' }
+//       { apiName: 'weather-tool' }        // auto-named endpoint secret
+//       { apiName: 'hr-chat-agent' }       // auto-named endpoint secret
+//     ]
+//     policyXml: loadTextContent('ai-product-policy.xml')
+//   }
+// ]
 
 param useTargetAzureKeyVault = false
 param keyVault = {

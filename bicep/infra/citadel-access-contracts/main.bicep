@@ -15,7 +15,7 @@ param useCase object
 @description('Map of service codes to their API names in APIM. Example: { LLM: ["universal-llm-api","azure-openai-api","unified-ai-api"], MULTI: ["universal-llm-api","weather-tool","hr-chat-agent"] }. A code may mix LLM inference APIs with published Tools (MCP) and Agents (A2A).')
 param apiNameMapping object
 
-@description('Required AI services for this use case. Each item: { code: "LLM", endpointSecretName: "LLM_ENDPOINT", apiKeySecretName: "LLM_KEY", policyXml?: "..." }. code drives the product prefix and naming: use LLM / TOOL / AGENT for a single asset type, or MULTI when a single product grants more than one asset type (e.g. MULTI-HR-ChatAgent-DEV). TOOL/AGENT/MULTI default to the asset-type-aware product policy; LLM keeps the existing LLM policy (backward compatible).')
+@description('Required AI services for this use case. Each item: { code: "LLM", apiKeySecretName: "LLM_KEY", endpointSecretName?: "LLM_ENDPOINT", policyXml?: "..." }. code drives the product prefix and naming: use LLM / TOOL / AGENT for a single asset type, or MULTI when a single product grants more than one asset type (e.g. MULTI-HR-ChatAgent-DEV). TOOL/AGENT/MULTI default to the asset-type-aware product policy; LLM keeps the existing LLM policy (backward compatible).\n\nMULTI-ASSET ENDPOINT PUBLISHING (optional, backward compatible): apiKeySecretName remains the single shared-key secret. endpointSecretName (optional legacy) still publishes one endpoint secret for the first granted API. To publish an endpoint secret PER asset, add either:\n  - assetEndpoints: [{ apiName: "weather-tool", endpointSecretName?: "" }] — explicit per-asset endpoints; empty endpointSecretName auto-generates <code>-<bu>-<useCase>-<env>-<apiName>-endpoint.\n  - publishAllAssetEndpoints: true — auto-publish an endpoint secret for EVERY API in apiNameMapping[code] (names auto-generated, or overridden by a matching assetEndpoints entry).\nfoundryApiName (optional): which granted API is the LLM inference endpoint wired to the Foundry connection; defaults to the first known LLM API, else the first API.')
 param services array
 
 @description('Optional product terms shown to subscribers')
@@ -113,6 +113,67 @@ var defaultMultiProductPolicyXml = loadTextContent('./policies/default-multi-pro
 // Derived from rotationKeySeed (defaults to newGuid()) into a 64-char value, or taken verbatim from rotationKeyOverride.
 var rotationKey = empty(rotationKeyOverride) ? toLower('${replace(rotationKeySeed, '-', '')}${replace(guid(rotationKeySeed), '-', '')}') : rotationKeyOverride
 
+// ============================================================================
+// MULTI-ASSET ENDPOINT PUBLISHING HELPERS (OPTIONAL - BACKWARD COMPATIBLE)
+// ============================================================================
+// A single (MULTI) contract shares ONE subscription key but each granted asset
+// (LLM inference API, published Tool/MCP, published Agent/A2A) has its own path.
+// These helpers publish the shared key once plus one endpoint secret per asset.
+
+// Normalize a raw secret name for Key Vault (lowercase, underscores -> hyphens).
+func kvName(raw string) string => toLower(replace(raw, '_', '-'))
+
+// Auto-generated, product-scoped, collision-safe per-asset endpoint secret name.
+func autoEndpointName(code string, bu string, uc string, env string, apiName string) string => toLower(replace('${code}-${bu}-${uc}-${env}-${apiName}-endpoint', '_', '-'))
+
+// Position of a value within an array (falls back to 0 when not present).
+func idxOf(arr array, value string) int => first(filter(range(0, length(arr)), i => arr[i] == value)) ?? 0
+
+// LLM inference APIs used to auto-target the Foundry connection (Foundry supports the LLM endpoint only).
+var knownLlmApis = ['universal-llm-api', 'azure-openai-api', 'unified-ai-api']
+
+// Per-service secret plan (compile-time): the shared key secret name, the ordered list of endpoint
+// secrets ({ secretName, apiIndex }) to publish, and the API index Foundry should connect to.
+// Nested collection building uses map()/filter() (not [for]) so it is valid inside the outer for-expression.
+var serviceSecretPlans = [for (s, i) in services: {
+  serviceIndex: i
+  code: s.code
+  keySecretName: kvName(s.apiKeySecretName)
+  endpoints: concat(
+    // Legacy single endpoint (additive, backward compatible) -> first granted API path.
+    (contains(s, 'endpointSecretName') && !empty(s.endpointSecretName)) ? [
+      { secretName: kvName(s.endpointSecretName), apiIndex: 0 }
+    ] : [],
+    // publishAllAssetEndpoints -> one endpoint secret per granted API (name overridable via assetEndpoints).
+    (s.?publishAllAssetEndpoints ?? false)
+      ? map(apiNameMapping[s.code], (apiName, ai) => {
+          secretName: length(filter(s.?assetEndpoints ?? [], e => e.apiName == apiName && !empty(e.?endpointSecretName ?? ''))) > 0
+            ? kvName(first(filter(s.?assetEndpoints ?? [], e => e.apiName == apiName && !empty(e.?endpointSecretName ?? ''))).endpointSecretName)
+            : autoEndpointName(s.code, useCase.businessUnit, useCase.useCaseName, useCase.environment, apiName)
+          apiIndex: ai
+        })
+      // Explicit assetEndpoints list -> one endpoint secret per listed asset.
+      : ((contains(s, 'assetEndpoints') && !empty(s.assetEndpoints))
+          ? map(s.assetEndpoints, e => {
+              secretName: !empty(e.?endpointSecretName ?? '') ? kvName(e.endpointSecretName) : autoEndpointName(s.code, useCase.businessUnit, useCase.useCaseName, useCase.environment, e.apiName)
+              apiIndex: idxOf(apiNameMapping[s.code], e.apiName)
+            })
+          : [])
+  )
+  // Foundry connects to the LLM endpoint: explicit foundryApiName, else first known LLM API, else first API.
+  foundryApiIndex: (!empty(s.?foundryApiName ?? '') && length(filter(apiNameMapping[s.code], a => a == (s.?foundryApiName ?? ''))) > 0)
+    ? idxOf(apiNameMapping[s.code], s.?foundryApiName ?? '')
+    : (length(filter(apiNameMapping[s.code], a => contains(knownLlmApis, a))) > 0
+        ? idxOf(apiNameMapping[s.code], first(filter(apiNameMapping[s.code], a => contains(knownLlmApis, a))) ?? '')
+        : 0)
+}]
+
+// Flatten the plans into one entry per Key Vault secret (shared key + each endpoint) for the primary Key Vault.
+var primaryKvSecretItems = flatten(map(serviceSecretPlans, plan => concat(
+  [ { serviceIndex: plan.serviceIndex, isKey: true, secretName: plan.keySecretName, apiIndex: 0 } ],
+  map(plan.endpoints, ep => { serviceIndex: plan.serviceIndex, isKey: false, secretName: ep.secretName, apiIndex: ep.apiIndex })
+)))
+
 resource apimRg 'Microsoft.Resources/resourceGroups@2022-09-01' existing = {
   scope: subscription(apim.subscriptionId)
   name: apim.resourceGroupName
@@ -166,17 +227,16 @@ module onboard 'modules/apimOnboardService.bicep' = [for s in services: {
   }
 }]
 
-// Write Key Vault secrets per service (only if useTargetAzureKeyVault is true)
-// Create/update KV secrets; normalize names (Key Vault does not allow underscores)
-module kvWrites 'modules/kvSecrets.bicep' = [for (s, i) in services: if (useTargetAzureKeyVault) {
-  name: 'kv-${s.code}-${productPostfix}'
+// Write Key Vault secrets (only if useTargetAzureKeyVault is true): the shared subscription key once,
+// plus one endpoint secret per asset. One module per secret keeps the dynamic secret set simple.
+module kvWrites 'modules/kvSecrets.bicep' = [for (item, idx) in primaryKvSecretItems: if (useTargetAzureKeyVault) {
+  name: 'kv-p${idx}-${productPostfix}'
   scope: kvRg
   params: {
     keyVaultName: kv.name
-    secretNames: [ toLower(replace(s.endpointSecretName, '_', '-')), toLower(replace(s.apiKeySecretName, '_', '-')) ]
+    secretNames: [ item.secretName ]
     secretValues: {
-      '${toLower(replace(s.endpointSecretName, '_', '-'))}': '${effectiveGatewayUrl}/${onboard[i].outputs.apiPath}'
-      '${toLower(replace(s.apiKeySecretName, '_', '-'))}': onboard[i].outputs.subscriptionActiveKey
+      '${item.secretName}': item.isKey ? onboard[item.serviceIndex].outputs.subscriptionActiveKey : '${effectiveGatewayUrl}/${onboard[item.serviceIndex].outputs.apiPaths[item.apiIndex]}'
     }
   }
 }]
@@ -202,7 +262,7 @@ module foundryConnections 'modules/foundryConnection.bicep' = [for (s, i) in ser
     aiFoundryAccountName: foundry.accountName
     aiFoundryProjectName: foundry.projectName
     connectionName: '${foundryConnectionPrefix}-${s.code}'
-    targetUrl: '${effectiveGatewayUrl}/${onboard[i].outputs.apiPath}'
+    targetUrl: '${effectiveGatewayUrl}/${onboard[i].outputs.apiPaths[serviceSecretPlans[i].foundryApiIndex]}'
     apimSubscriptionKey: onboard[i].outputs.subscriptionActiveKey
     connectionCategory: foundryConfig.?connectionCategory ?? 'ApiManagement'
     isSharedToAll: foundryConfig.?isSharedToAll ?? false
@@ -267,24 +327,20 @@ module additionalOnboard 'modules/apimOnboardService.bicep' = [for item in addit
   }
 }]
 
-// --- Additional Key Vaults: store endpoint + shared key per (KV x service) ---
-var additionalKvItems = [for idx in range(0, length(additionalKeyVaults) * svcCount): {
-  kvIndex: idx / svcCount
-  serviceIndex: idx % svcCount
-  kvCfg: additionalKeyVaults[idx / svcCount]
-  endpointSecretName: toLower(replace(services[idx % svcCount].endpointSecretName, '_', '-'))
-  apiKeySecretName: toLower(replace(services[idx % svcCount].apiKeySecretName, '_', '-'))
-}]
+// --- Additional Key Vaults: store shared key + per-asset endpoints per (KV x service x secret) ---
+var additionalKvSecretItems = flatten(map(additionalKeyVaults, (kvCfg, k) => flatten(map(serviceSecretPlans, plan => concat(
+  [ { kvIndex: k, kvCfg: kvCfg, serviceIndex: plan.serviceIndex, isKey: true, secretName: plan.keySecretName, apiIndex: 0 } ],
+  map(plan.endpoints, ep => { kvIndex: k, kvCfg: kvCfg, serviceIndex: plan.serviceIndex, isKey: false, secretName: ep.secretName, apiIndex: ep.apiIndex })
+)))))
 
-module additionalKvWrites 'modules/kvSecrets.bicep' = [for item in additionalKvItems: {
-  name: 'kv-add${item.kvIndex}-s${item.serviceIndex}-${productPostfix}'
+module additionalKvWrites 'modules/kvSecrets.bicep' = [for (item, idx) in additionalKvSecretItems: {
+  name: 'kv-add-${idx}-${productPostfix}'
   scope: resourceGroup(item.kvCfg.subscriptionId, item.kvCfg.resourceGroupName)
   params: {
     keyVaultName: item.kvCfg.name
-    secretNames: [ item.endpointSecretName, item.apiKeySecretName ]
+    secretNames: [ item.secretName ]
     secretValues: {
-      '${item.endpointSecretName}': '${(item.kvCfg.?endpointSource ?? '') == 'global' ? globalGatewayUrl : (item.kvCfg.?endpointSource ?? '') == 'primary' ? apimSvc.properties.gatewayUrl : startsWith(item.kvCfg.?endpointSource ?? '', 'secondary:') ? additionalApim[int(replace(item.kvCfg.endpointSource, 'secondary:', ''))].properties.gatewayUrl : effectiveGatewayUrl}/${onboard[item.serviceIndex].outputs.apiPath}'
-      '${item.apiKeySecretName}': onboard[item.serviceIndex].outputs.subscriptionActiveKey
+      '${item.secretName}': item.isKey ? onboard[item.serviceIndex].outputs.subscriptionActiveKey : '${(item.kvCfg.?endpointSource ?? '') == 'global' ? globalGatewayUrl : (item.kvCfg.?endpointSource ?? '') == 'primary' ? apimSvc.properties.gatewayUrl : startsWith(item.kvCfg.?endpointSource ?? '', 'secondary:') ? additionalApim[int(replace(item.kvCfg.endpointSource, 'secondary:', ''))].properties.gatewayUrl : effectiveGatewayUrl}/${onboard[item.serviceIndex].outputs.apiPaths[item.apiIndex]}'
     }
   }
   dependsOn: [
@@ -307,7 +363,7 @@ module additionalFoundryConnections 'modules/foundryConnection.bicep' = [for ite
     aiFoundryAccountName: item.f.accountName
     aiFoundryProjectName: item.f.projectName
     connectionName: '${foundryConnectionPrefix}-${item.s.code}'
-    targetUrl: '${(item.f.?endpointSource ?? '') == 'global' ? globalGatewayUrl : (item.f.?endpointSource ?? '') == 'primary' ? apimSvc.properties.gatewayUrl : startsWith(item.f.?endpointSource ?? '', 'secondary:') ? additionalApim[int(replace(item.f.endpointSource, 'secondary:', ''))].properties.gatewayUrl : effectiveGatewayUrl}/${onboard[item.serviceIndex].outputs.apiPath}'
+    targetUrl: '${(item.f.?endpointSource ?? '') == 'global' ? globalGatewayUrl : (item.f.?endpointSource ?? '') == 'primary' ? apimSvc.properties.gatewayUrl : startsWith(item.f.?endpointSource ?? '', 'secondary:') ? additionalApim[int(replace(item.f.endpointSource, 'secondary:', ''))].properties.gatewayUrl : effectiveGatewayUrl}/${onboard[item.serviceIndex].outputs.apiPaths[serviceSecretPlans[item.serviceIndex].foundryApiIndex]}'
     apimSubscriptionKey: onboard[item.serviceIndex].outputs.subscriptionActiveKey
     connectionCategory: foundryConfig.?connectionCategory ?? 'ApiManagement'
     isSharedToAll: foundryConfig.?isSharedToAll ?? false
@@ -339,11 +395,13 @@ output products array = [for s in services: {
 }]
 
 // When using Key Vault, output references to the secret names in Key Vault
-output subscriptions array = [for s in services: {
+output subscriptions array = [for (s, i) in services: {
   name: '${s.code}-${productPostfix}-SUB-01'
   productId: '${s.code}-${productPostfix}'
-  keyVaultApiKeySecretName: useTargetAzureKeyVault ? toLower(replace(s.apiKeySecretName, '_', '-')) : ''
-  keyVaultEndpointSecretName: useTargetAzureKeyVault ? toLower(replace(s.endpointSecretName, '_', '-')) : ''
+  keyVaultApiKeySecretName: useTargetAzureKeyVault ? serviceSecretPlans[i].keySecretName : ''
+  // First endpoint secret (backward compatible); full per-asset set in keyVaultEndpointSecretNames.
+  keyVaultEndpointSecretName: useTargetAzureKeyVault && length(serviceSecretPlans[i].endpoints) > 0 ? serviceSecretPlans[i].endpoints[0].secretName : ''
+  keyVaultEndpointSecretNames: useTargetAzureKeyVault ? map(serviceSecretPlans[i].endpoints, ep => ep.secretName) : []
 }]
 
 // When NOT using Key Vault, output the actual endpoints and keys
@@ -357,6 +415,11 @@ output endpoints array = [for (s, i) in services: {
   productId: '${s.code}-${productPostfix}'
   subscriptionName: '${s.code}-${productPostfix}-SUB-01'
   endpoint: useTargetAzureKeyVault ? '' : '${apimSvc.properties.gatewayUrl}/${onboard[i].outputs.apiPath}'
+  // Per-asset endpoints (one per granted API) when not using Key Vault.
+  assetEndpoints: useTargetAzureKeyVault ? [] : map(serviceSecretPlans[i].endpoints, ep => {
+    secretName: ep.secretName
+    endpoint: '${apimSvc.properties.gatewayUrl}/${onboard[i].outputs.apiPaths[ep.apiIndex]}'
+  })
   // API key is marked secure in the module output, consumers should treat this as sensitive when not using Key Vault
   #disable-next-line outputs-should-not-contain-secrets
   apiKey: useTargetAzureKeyVault ? '' : string(onboard[i].outputs.subscriptionPrimaryKey)
@@ -370,7 +433,7 @@ output useFoundry bool = useTargetFoundry
 output foundryConnections array = [for (s, i) in services: useTargetFoundry ? {
   code: s.code
   connectionName: '${foundryConnectionPrefix}-${s.code}'
-  targetUrl: '${apimSvc.properties.gatewayUrl}/${onboard[i].outputs.apiPath}'
+  targetUrl: '${apimSvc.properties.gatewayUrl}/${onboard[i].outputs.apiPaths[serviceSecretPlans[i].foundryApiIndex]}'
   foundryAccount: foundry.accountName
   foundryProject: foundry.projectName
 } : {}]

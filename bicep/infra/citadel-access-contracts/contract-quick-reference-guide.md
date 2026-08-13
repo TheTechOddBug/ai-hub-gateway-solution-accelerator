@@ -8,6 +8,8 @@ For the full walkthrough, parameter reference, and architecture, see the [Access
 
 > 🧩 **Mixed asset types:** a contract can grant **LLM + Tools (MCP) + Agents (A2A)** in one product. Set the service `code` to `TOOL` / `AGENT` for a single published type, or `MULTI` when mixing types (e.g. `MULTI-HR-ChatAgent-DEV`), and list every granted API under `apiNameMapping[code]`. `TOOL` / `AGENT` / `MULTI` products get the asset-type-aware policy automatically. See [citadel-access-contracts-policy.md](./citadel-access-contracts-policy.md#asset-type-aware-policies-llm--tools--agents-in-one-product).
 
+> 🔑 **One shared key, one endpoint per asset:** a multi-asset contract shares a **single** `apiKeySecretName` across all assets. Publish an endpoint secret **per asset** with `assetEndpoints: [{ apiName, endpointSecretName? }]` (empty name auto-generates `<code>-<bu>-<useCase>-<env>-<apiName>-endpoint`) or `publishAllAssetEndpoints: true`. Set `foundryApiName` to the LLM API so the Foundry connection targets the LLM endpoint. Pure-LLM contracts with just `endpointSecretName` + `apiKeySecretName` are unchanged. See the [service schema](./README.md#shared-key-one-endpoint-secret-per-asset).
+
 ## 📁 Folder Structure
 
 Organize your access contracts by **business unit**, **use case**, and **environment** for clean source control and predictable deployments:

@@ -93,12 +93,11 @@ resource sub 'Microsoft.ApiManagement/service/subscriptions@2024-05-01' = {
   )
 }
 
-// first API path for endpoint URL construction
-var firstApiName = apiNames[0]
-resource api 'Microsoft.ApiManagement/service/apis@2024-05-01' existing = {
-  name: firstApiName
+// Resolve every granted API's path (ordered same as apiNames) for per-asset endpoint construction
+resource apis 'Microsoft.ApiManagement/service/apis@2025-09-01-preview' existing = [for apiName in apiNames: {
+  name: apiName
   parent: apim
-}
+}]
 
 output productName string = product.name
 output subscriptionNameOut string = sub.name
@@ -108,4 +107,7 @@ output subscriptionPrimaryKey string = sub.listSecrets().primaryKey
 output subscriptionSecondaryKey string = sub.listSecrets().secondaryKey
 @secure()
 output subscriptionActiveKey string = usePrimaryKey ? sub.listSecrets().primaryKey : sub.listSecrets().secondaryKey
-output apiPath string = api.properties.path
+// First API path (backward compatible single-endpoint consumers)
+output apiPath string = apis[0].properties.path
+// All granted API paths, aligned to apiNames order (per-asset endpoint publishing)
+output apiPaths array = [for (apiName, i) in apiNames: apis[i].properties.path]

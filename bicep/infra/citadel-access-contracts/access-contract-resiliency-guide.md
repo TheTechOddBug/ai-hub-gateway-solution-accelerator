@@ -46,6 +46,8 @@ Each additional Key Vault / Foundry entry can choose which endpoint URL it store
 | `'secondary:<index>'` | The additional gateway at that 0-based index in `additionalApimGateways` |
 | `''` (default / omitted) | `globalGatewayUrl` if set, otherwise the primary gateway URL |
 
+> 🔑 **Per-asset endpoints are mirrored too.** For a multi-asset (`MULTI-`) contract, each additional Key Vault receives the **same set of secrets as the primary**: the single shared key plus **one endpoint secret per asset** (from `assetEndpoints` / `publishAllAssetEndpoints`). The selected `endpointSource` gateway base is applied to **every** per-asset endpoint URL, so a DR-region Key Vault holds the full, region-appropriate endpoint set for LLM + Tools + Agents under one shared key.
+
 ---
 
 ## 🔩 Parameters
