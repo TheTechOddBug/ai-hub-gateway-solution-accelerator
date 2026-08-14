@@ -70,7 +70,15 @@ metadata: {
 }
 ```
 
-**`mcp-from-api`**: `sourceApiName`, `operationNames`, `subscriptionRequired` (default `true`), `subscriptionKeyHeaderName` (`api-key` default, or `Ocp-Apim-Subscription-Key`).
+**`mcp-from-api`**: `sourceApiName`, `operationNames`, `subscriptionRequired` (default `true`), `subscriptionKeyHeaderName` (`api-key` default, or `Ocp-Apim-Subscription-Key`), `forwardSubscriptionKeyToSource` (default `false`), `sourceSubscriptionKeyHeaderName` (default `x-mcp-sub-key`).
+
+> ⚠️ **Source API must NOT require its own subscription key.** An `mcp-from-api` server forwards `tools/call` to the source API (`sourceApiName`) **internally**. If that source API is onboarded with `subscriptionRequired: true`, the internal hop has no subscription key and APIM rejects it with `401 — Access denied due to missing subscription key`. The failure is subtle: `initialize` and `tools/list` still succeed (they only read tool metadata and never touch the backend), so only actual tool invocations break. Onboard the source API with **`subscriptionRequired: false`** (the sample `weather-api` uses `subscriptionRequired: false` + the `api-key` header) and let the published MCP server's own `subscriptionRequired`/Access Contract gate govern who may call it. The `subscriptionRequired` field here controls the **published MCP server's** gate, which is independent of the source API's setting.
+
+> 🔐 **Keep the source API protected (opt-in key forwarding).** If you don't want the source API reachable anonymously, set `forwardSubscriptionKeyToSource: true`. The published MCP policy then injects the caller's subscription key (`context.Subscription.Key`) into a **custom header** — `sourceSubscriptionKeyHeaderName` (default `x-mcp-sub-key`) — that survives the internal hop, so the **same contract key** reaches both the MCP tool and the raw API. This works because APIM strips the *standard* subscription headers (`api-key` **and** `Ocp-Apim-Subscription-Key`) before the tool→backend hop, but leaves a non-standard header intact. Two prerequisites (outside this module):
+> 1. **Source API** onboarded with `subscriptionRequired: true` reading its key from the **same** custom header (e.g. `weather-api` → `subscriptionKeyParameterNames.header = x-mcp-sub-key`).
+> 2. **Access Contract** grants the source API too — add it to `apiNameMapping` (e.g. `MULTI: [ 'weather-tool', 'weather-api', … ]`) so the one subscription key authorizes both APIs.
+>
+> Result: direct calls to the source API without a key return `401`, the same key works directly *and* via the tool, and no second credential is needed. Leave `forwardSubscriptionKeyToSource: false` (default) to keep the simpler anonymous-source model. Ignored when a custom `policyXml` is supplied on the asset.
 
 **`mcp-existing`**: `transportType` (default `streamable`), `subscriptionRequired` (default `true`), `subscriptionKeyHeaderName` (`api-key` default, or `Ocp-Apim-Subscription-Key`), `backend { url, authType, authConfig?, circuitBreaker? }`.
 
