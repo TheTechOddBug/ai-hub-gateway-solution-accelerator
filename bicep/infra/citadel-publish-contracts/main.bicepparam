@@ -49,6 +49,13 @@ param publishAssets = [
   // 1) TOOL (API -> MCP): expose an existing onboarded REST API as an MCP server.
   //    Reuses the source API's backend/auth. The sample weather-api is created
   //    when the gateway is deployed with isMCPSampleDeployed=true.
+  //    NOTE: the source API (sourceApiName) MUST be onboarded with subscriptionRequired=false.
+  //    tools/call forwards to it internally; a required source-API key makes that hop fail with
+  //    401 "missing subscription key" (initialize/tools/list still pass as they skip the backend).
+  //    OPT-IN alternative: to keep the source API subscription-protected (no anonymous direct access)
+  //    while the SAME contract key reaches both, set forwardSubscriptionKeyToSource: true and onboard
+  //    the source API with subscriptionRequired=true reading its key from sourceSubscriptionKeyHeaderName
+  //    (default 'x-mcp-sub-key'), then grant the source API in the Access Contract's apiNameMapping too.
   // --------------------------------------------------------------------------
   {
     assetType: 'mcp-from-api'
@@ -65,6 +72,8 @@ param publishAssets = [
     }
     sourceApiName: 'weather-api'
     operationNames: [ 'get-weather' ]
+    // forwardSubscriptionKeyToSource: true        // opt-in: keep the source API protected, forward the caller key
+    // sourceSubscriptionKeyHeaderName: 'x-mcp-sub-key' // custom header the source API reads (APIM won't strip it)
 
     // Optional API Center registration
     publishToApiCenter: false

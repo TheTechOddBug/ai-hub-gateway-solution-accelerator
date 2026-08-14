@@ -36,12 +36,27 @@ param subscriptionKeyHeaderName string = 'api-key'
 @description('Custom rawxml policy. When empty, the baseline MCP policy is applied.')
 param mcpPolicyXml string = ''
 
+@description('''Opt-in: forward the caller's APIM subscription key to the SOURCE API on the internal tools/call hop.
+Lets the source API stay subscription-protected (no anonymous direct access) while the SAME contract key reaches
+both the MCP tool and the raw API underneath. Requires: (1) the source API onboarded with subscriptionRequired=true
+reading its key from sourceSubscriptionKeyHeaderName, and (2) the source API added to the same access-contract product.
+Ignored when a custom mcpPolicyXml is supplied. See publish-contract-guide.md.''')
+param forwardSubscriptionKeyToSource bool = false
+
+@description('Custom (non-standard) header the source API reads its subscription key from when forwardSubscriptionKeyToSource is true. Must NOT be a standard subscription header (api-key / Ocp-Apim-Subscription-Key) — APIM strips those before the backend hop, so they would not survive.')
+param sourceSubscriptionKeyHeaderName string = 'x-mcp-sub-key'
+
 // ------------------
 //    VARIABLES
 // ------------------
 
 var defaultPolicyXml = loadTextContent('../policies/baseline-mcp-policy.xml')
-var effectivePolicyXml = empty(mcpPolicyXml) ? defaultPolicyXml : mcpPolicyXml
+// Opt-in key forwarding: inject a set-header that copies the caller's subscription key into a custom
+// header the source API reads, so the internal tools/call -> source-API hop passes the source API's
+// subscription gate (standard subscription headers are stripped by APIM before that hop).
+var forwardKeySnippet = '        <set-header name="${sourceSubscriptionKeyHeaderName}" exists-action="override">\n            <value>@(context.Subscription?.Key ?? "")</value>\n        </set-header>\n'
+var baselineWithForward = replace(defaultPolicyXml, '    </inbound>', '${forwardKeySnippet}    </inbound>')
+var effectivePolicyXml = !empty(mcpPolicyXml) ? mcpPolicyXml : (forwardSubscriptionKeyToSource ? baselineWithForward : defaultPolicyXml)
 
 // Query-string key name mirrors the header: the APIM-native header uses the 'subscription-key' query param,
 // the LLM-style 'api-key' header uses an 'api-key' query param.

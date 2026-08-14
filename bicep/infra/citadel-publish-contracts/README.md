@@ -16,6 +16,10 @@ Onboard and publish **centrally protected AI assets** — Tools (MCP) and Agents
 
 > **MCP endpoint suffix:** APIM appends `/mcp` to the path **only** for API→MCP tools (`mcp-from-api`). Native/remote MCP servers (`mcp-existing`) are served at `{gateway}/{path}` with **no** appended `/mcp`.
 
+> ⚠️ **`mcp-from-api` source API must NOT require its own subscription key.** The MCP server forwards `tools/call` to `sourceApiName` internally, so if that source API was onboarded with `subscriptionRequired: true` the internal call fails with `401 — missing subscription key` (while `initialize`/`tools/list` still succeed). Onboard the source API with `subscriptionRequired: false` and let the published MCP server's own subscription/Access Contract gate govern access. See [publish-contract-guide.md](./publish-contract-guide.md#per-asset-fields).
+
+> 🔐 **Keep the source API protected (opt-in).** Set `forwardSubscriptionKeyToSource: true` on an `mcp-from-api` asset to forward the caller's subscription key into a custom header (`sourceSubscriptionKeyHeaderName`, default `x-mcp-sub-key`) that survives the internal hop — so the **same contract key** reaches both the MCP tool and a **subscription-protected** source API (no anonymous direct access). Requires the source API onboarded with `subscriptionRequired: true` reading that custom header, and the source API added to the Access Contract's `apiNameMapping`. See [publish-contract-guide.md](./publish-contract-guide.md#per-asset-fields).
+
 ## Layout
 
 ```
