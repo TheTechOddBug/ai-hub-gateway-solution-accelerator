@@ -19,9 +19,9 @@ This package eliminates manual APIM configuration by providing:
 | Resource | Naming Pattern | Description |
 |----------|----------------|-------------|
 | **APIM Product** | `{code}-{BU}-{UseCase}-{ENV}` | Product per service (e.g., `LLM-Healthcare-PatientAssistant-DEV`). `code` is the asset-type prefix: `LLM` / `TOOL` / `AGENT` for a single type, or `MULTI` when one product grants more than one type (e.g. `MULTI-HR-ChatAgent-DEV`) |
-| **APIM Subscription** | `{product}-SUB-01` | Subscription with API key |
-| **Key Vault Secrets** | `{secretName}` | Endpoint URL and API key (optional) |
-| **Foundry Connection** | `{prefix}-{code}` | APIM connection for Microsoft Foundry agents (optional) |
+| **APIM Subscription** | `{product}-SUB-01` | Subscription with a single shared API key |
+| **Key Vault Secrets** | `{secretName}` | One shared **key** secret + one **endpoint** secret per asset (optional) |
+| **Foundry Connection** | `{prefix}-{code}` | APIM connection for Microsoft Foundry agents, wired to the LLM endpoint (optional) |
 
 ## Key Features
 
@@ -60,6 +60,8 @@ Assets published through the [Publish Contract](../citadel-publish-contracts/) (
   - **Tool / Agent** → request-based `rate-limit-by-key` (calls/min) + `quota-by-key` (call quota)
   - **Common** (any type) → opt-in `llm-content-safety`, alerting, etc.
 - **Asset-kind detection**: APIM does not expose the API type to policy, so the product policy sets `contractToolApis` / `contractAgentApis` (comma-separated API resource names) before including `set-asset-kind`; anything unlisted defaults to `llm`.
+- **One shared key, one endpoint per asset**: the contract mints a **single** subscription key shared by every granted asset, and Key Vault publishes that key once plus **one endpoint secret per asset** (via `assetEndpoints` or `publishAllAssetEndpoints`). See [Shared key, one endpoint secret per asset](#shared-key-one-endpoint-secret-per-asset).
+- **Foundry** connects to the **LLM endpoint** of the contract (selected via `foundryApiName`); pair it with Key Vault so the Tool/Agent endpoints are also available to the contract owner.
 
 > ✅ **Backward compatible** — `LLM` contracts keep the existing LLM product policy untouched. See [citadel-access-contracts-policy.md](./citadel-access-contracts-policy.md) for the policy snippets.
 
@@ -287,18 +289,41 @@ Each service in the `services` array:
 
 ```bicep
 {
-  code: string              // Service code (e.g., "LLM", "DOC", "SRCH")
-  endpointSecretName: string // Name for endpoint secret in Key Vault
-  apiKeySecretName: string   // Name for API key secret in Key Vault
+  code: string               // Service code (e.g., "LLM", "DOC", "SRCH", "MULTI")
+  apiKeySecretName: string   // Name for the single shared API key secret in Key Vault
+  endpointSecretName: string // Optional: legacy single endpoint secret (first granted API path)
   policyXml: string          // Optional: Custom policy XML (empty = use default)
+
+  // --- Multi-asset endpoint publishing (optional, backward compatible) ---
+  assetEndpoints: array      // Optional: one endpoint secret per asset
+                             //   [{ apiName: 'weather-tool', endpointSecretName?: '' }]
+                             //   empty endpointSecretName auto-generates a name
+  publishAllAssetEndpoints: bool  // Optional: auto-publish an endpoint secret for EVERY
+                                  //   API in apiNameMapping[code] (default false)
+  foundryApiName: string     // Optional: which granted API is the LLM endpoint for the
+                             //   Foundry connection (defaults to first known LLM API)
 }
 ```
 
-This will create one APIM product + subscription + Key Vault secrets per service code and leverage the referenced policy XML for that product.
+This creates **one APIM product + one subscription + one shared API key** per service code, and applies the referenced policy XML for that product.
 
-This is an array to allow multiple services to be assigned to specific use case (like granting both LLM and document intelligence access to the same application).
+The `services` array lets you assign multiple **independent** service codes to a use case (for example granting both `LLM` and `DOC` access). Each service code gets its **own** product + subscription + key (LLM has a different key from Document Intelligence).
 
-But each service will have its own product + subscription + secrets (i.e llm will have a different key from document intelligence).
+##### Shared key, one endpoint secret per asset
+
+A single product (especially a `MULTI-` contract granting LLM + Tools/MCP + Agents/A2A) shares **one** subscription key across every granted asset. Because each asset has its own gateway path, Key Vault publishes:
+
+- **one key secret** — `apiKeySecretName` (shared by all assets in the contract), and
+- **one endpoint secret per asset** — configured via `assetEndpoints` or `publishAllAssetEndpoints`.
+
+| Field | Effect |
+|-------|--------|
+| `endpointSecretName` (legacy) | Publishes a single endpoint secret for the **first** granted API. Still honored for backward compatibility; additive when combined with the fields below. |
+| `assetEndpoints` | Publishes one endpoint secret per listed asset. Supply `endpointSecretName` per entry, or leave it empty to auto-generate `<code>-<businessUnit>-<useCase>-<env>-<apiName>-endpoint`. |
+| `publishAllAssetEndpoints: true` | Publishes an endpoint secret for **every** API in `apiNameMapping[code]` (names auto-generated, or overridden by a matching `assetEndpoints` entry). |
+| `foundryApiName` | Selects which granted API is the LLM inference endpoint for the Foundry connection (Foundry supports the LLM endpoint only). |
+
+> ✅ **Backward compatible** — a service with only `code` + `apiKeySecretName` + `endpointSecretName` (no new fields) publishes exactly the same two secrets as before.
 
 ---
 
@@ -307,14 +332,16 @@ But each service will have its own product + subscription + secrets (i.e llm wil
 | Component | Scope | Naming | Notes |
 |-----------|-------|--------|-------|
 | APIM Product | APIM | `<serviceCode>-<BU>-<UseCase>-<ENV>` | One per service code you include |
-| APIM Subscription | APIM | `<product>-SUB-01` | Primary key is captured into Key Vault |
-| Key Vault Secrets | KV | `endpointSecretName`, `apiKeySecretName` | One endpoint + one key per service |
-| Foundry Connection | Microsoft Foundry | `<prefix>-<serviceCode>` | One connection per service (if enabled) |
+| APIM Subscription | APIM | `<product>-SUB-01` | Single shared key captured into Key Vault |
+| Key Vault key secret | KV | `apiKeySecretName` | **One** shared key per contract |
+| Key Vault endpoint secret(s) | KV | `endpointSecretName` / `assetEndpoints[].endpointSecretName` / auto-generated | **One per asset** for multi-asset contracts |
+| Foundry Connection | Microsoft Foundry | `<prefix>-<serviceCode>` | One connection per service (LLM endpoint), if enabled |
 
 Naming examples
 - Product: `LLM-Retail-FinancialAssistant-DEV`
 - Subscription: `LLM-Retail-FinancialAssistant-DEV-SUB-01`
 - Foundry Connection: `Retail-FinancialAssistant-DEV-LLM`
+- Auto-generated endpoint secret: `multi-hr-chatagent-dev-weather-tool-endpoint`
 
 ---
 
@@ -621,6 +648,8 @@ agent = client.agents.create_agent(
 | `customHeaders` | object | `{}` | Additional headers for requests |
 | `authConfig` | object | `{}` | Custom auth header config |
 
+> **LLM endpoint selection:** the Foundry connection always targets the **LLM inference endpoint** of the contract. Set `foundryApiName` on the service to pick which granted API is the LLM endpoint; when omitted the first known LLM API (`universal-llm-api` / `azure-openai-api` / `unified-ai-api`) is used, else the first API in `apiNameMapping[code]`.
+
 ### Combined Targets Example
 
 You can use Key Vault AND Foundry together:
@@ -650,6 +679,10 @@ This creates:
 - Foundry APIM connections for AI agents
 
 All using the same subscription keys, ensuring consistent governance.
+
+> 🧩 **Foundry supports the LLM endpoint only.** For a **multi-asset (`MULTI-`) contract** the Foundry connection is wired to the LLM inference endpoint (chosen via `foundryApiName`, defaulting to the first known LLM API). The Tool (MCP) and Agent (A2A) endpoints in the same contract are **not** carried by the Foundry connection.
+>
+> **Recommendation:** for multi-asset contracts, enable **Key Vault alongside Foundry** (both `useTargetAzureKeyVault = true` and `useTargetFoundry = true`). Foundry gives agents the LLM connection, while Key Vault publishes the shared key **and every asset's endpoint** (LLM + Tools + Agents) so the contract owner has everything needed to reach all granted asset types using the same `api-key`.
 
 ---
 
@@ -702,6 +735,35 @@ param services = [
 
 ## 🔄 Advanced Scenarios
 
+### Multi-asset contract (one product, LLM + Tool + Agent, endpoint per asset)
+
+A single `MULTI-` product grants LLM + Tools/MCP + Agents/A2A under **one shared key**, and Key Vault receives **one endpoint secret per asset** plus the shared key. Enable Key Vault (for all endpoints) alongside Foundry (for the LLM connection):
+
+```bicep
+param useTargetAzureKeyVault = true
+param useTargetFoundry = true
+
+param apiNameMapping = {
+  MULTI: ['universal-llm-api', 'weather-tool', 'hr-chat-agent']
+}
+
+param services = [
+  {
+    code: 'MULTI'
+    apiKeySecretName: 'HR-CHATAGENT-KEY'      // single shared key for all assets
+    foundryApiName: 'universal-llm-api'       // Foundry connection targets the LLM endpoint
+    assetEndpoints: [
+      { apiName: 'universal-llm-api', endpointSecretName: 'HR-CHATAGENT-LLM-ENDPOINT' }
+      { apiName: 'weather-tool' }             // auto-named endpoint secret
+      { apiName: 'hr-chat-agent' }            // auto-named endpoint secret
+    ]
+    policyXml: loadTextContent('ai-product-policy.xml')
+  }
+]
+```
+
+**Result**: 1 product, 1 subscription (shared key), and in Key Vault: 1 key secret (`hr-chatagent-key`) + 3 endpoint secrets (`hr-chatagent-llm-endpoint`, `multi-hr-chatagent-dev-weather-tool-endpoint`, `multi-hr-chatagent-dev-hr-chat-agent-endpoint`). The Foundry connection points at the LLM endpoint. To publish an endpoint for **every** granted API without listing them, set `publishAllAssetEndpoints: true` instead of `assetEndpoints`.
+
 ### Multiple Services in One Use Case
 
 Onboard multiple AI services simultaneously:
@@ -751,12 +813,18 @@ After deployment, the following outputs are available:
 | `apimGatewayUrl` | string | APIM gateway base URL | `https://apim-gateway.azure-api.net` |
 | `useKeyVault` | bool | Always `true` | `true` |
 | `products[]` | array | Created products | `[{ productId: "OAI-Healthcare-...", displayName: "..." }]` |
-| `subscriptions[]` | array | KV secret names | `[{ name: "OAI-...-SUB-01", keyVaultApiKeySecretName: "openai-api-key", ... }]` |
+| `subscriptions[]` | array | KV secret names. `keyVaultApiKeySecretName` is the shared key; `keyVaultEndpointSecretName` is the first endpoint (legacy); `keyVaultEndpointSecretNames[]` lists **every per-asset endpoint** secret | `[{ name: "MULTI-...-SUB-01", keyVaultApiKeySecretName: "hr-chatagent-key", keyVaultEndpointSecretNames: ["hr-chatagent-llm-endpoint", "multi-hr-chatagent-dev-weather-tool-endpoint"], ... }]` |
 
 **Access secrets from Key Vault**:
 ```powershell
-$secretNames = (az deployment sub show --name my-deployment --query properties.outputs.subscriptions.value -o json | ConvertFrom-Json)
-$endpoint = az keyvault secret show --vault-name <kv-name> --name ($secretNames[0].keyVaultEndpointSecretName) --query value -o tsv
+$subs = (az deployment sub show --name my-deployment --query properties.outputs.subscriptions.value -o json | ConvertFrom-Json)
+# Shared key
+$key = az keyvault secret show --vault-name <kv-name> --name ($subs[0].keyVaultApiKeySecretName) --query value -o tsv
+# Every per-asset endpoint
+foreach ($name in $subs[0].keyVaultEndpointSecretNames) {
+  $ep = az keyvault secret show --vault-name <kv-name> --name $name --query value -o tsv
+  Write-Host "$name = $ep"
+}
 ```
 
 ### When NOT Using Key Vault (`useTargetAzureKeyVault = false`)

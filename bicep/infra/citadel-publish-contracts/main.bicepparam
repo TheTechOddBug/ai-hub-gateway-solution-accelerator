@@ -27,6 +27,11 @@ param managedIdentityClientId = ''
 // Circuit breaker master toggle + defaults (per-asset overrides via backend.circuitBreaker).
 param configureCircuitBreaker = true
 
+// Prefix every published asset's gateway path with its asset-type segment: Tools are served under
+// {gateway}/mcp/... and Agents under {gateway}/agent/.... Default true. Set false to keep legacy
+// un-prefixed paths, or set a per-asset `pathPrefix` ('' opts one asset out; a custom value overrides).
+param useAssetTypePathPrefix = true
+
 // Optional Azure API Center coordinates. Required only if any asset sets
 // publishToApiCenter=true. Leave serviceName empty to disable API Center registration.
 param apiCenter = {
@@ -50,7 +55,7 @@ param publishAssets = [
     name: 'weather-tool'
     displayName: 'Weather Tool (MCP)'
     description: 'Weather data operations for a given location, published as an MCP tool server.'
-    path: 'weather-tool-mcp'
+    path: 'weather-tool-mcp'                 // endpoint: {gateway}/mcp/weather-tool-mcp/mcp (mcp/ prefix + APIM /mcp suffix)
     metadata: {
       version: '1.0.0'
       owner: 'Platform Engineering'
@@ -84,7 +89,7 @@ param publishAssets = [
     name: 'ms-learn-tool'
     displayName: 'Microsoft Learn Tool (MCP)'
     description: 'Microsoft Learn MCP server published and protected through the gateway.'
-    path: 'ms-learn-tool-mcp'
+    path: 'ms-learn-tool-mcp'                // endpoint: {gateway}/mcp/ms-learn-tool-mcp (mcp/ prefix, no /mcp suffix)
     transportType: 'streamable'
     subscriptionRequired: true
     metadata: {
@@ -124,7 +129,7 @@ param publishAssets = [
     name: 'hr-chat-agent'
     displayName: 'HR Chat Agent (A2A)'
     description: 'HR assistant answering policy, benefits, and onboarding questions via A2A.'
-    path: 'hr-chat-agent'
+    path: 'hr-chat-agent'                    // endpoint: {gateway}/agent/hr-chat-agent (agent/ prefix); card at /agent/hr-chat-agent/.well-known/agent.json
     agentId: 'HR-ChatAgent'
     // A2A is anonymous at the gateway in phase 1 (APIM's A2A preview does not validate subscription
     // keys). Client auth is added by the phase-2 Access Contract. Do not send an api-key header to A2A.

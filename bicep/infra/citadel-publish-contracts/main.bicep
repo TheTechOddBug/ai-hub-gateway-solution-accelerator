@@ -58,6 +58,9 @@ param circuitBreakerDefaults object = {
 @description('Ensure the mcp-usage / a2a-usage policy fragments exist on the gateway before publishing')
 param ensureUsageFragments bool = true
 
+@description('Prefix each published asset\'s gateway path with its asset-type segment (mcp/ for Tools, agent/ for Agents), so tools are served under {gateway}/mcp/... and agents under {gateway}/agent/.... Set false to keep legacy un-prefixed paths. Per-asset override: set the asset\'s pathPrefix (e.g. \'\' to opt a single asset out, or a custom segment).')
+param useAssetTypePathPrefix bool = true
+
 @description('Optional Azure API Center coordinates for asset registration: { subscriptionId, resourceGroupName, serviceName, workspaceName }. Required only if any asset sets publishToApiCenter=true.')
 param apiCenter object = {
   subscriptionId: ''
@@ -73,6 +76,7 @@ param apiCenter object = {
   displayName: string
   description: string
   path: string                 // gateway path segment
+  pathPrefix?: string          // override the auto asset-type prefix (mcp/agent); '' opts this asset out
   metadata?: { version, owner, contactEmail, compliance: [], classification }
 
   // mcp-from-api
@@ -125,6 +129,24 @@ resource apimSvc 'Microsoft.ApiManagement/service@2024-06-01-preview' existing =
 
 var gatewayUrl = apimSvc.properties.gatewayUrl
 
+// Default asset-type path prefix per asset type (Tools -> mcp, Agents -> agent).
+var assetTypePrefixDefault = {
+  'mcp-from-api': 'mcp'
+  'mcp-existing': 'mcp'
+  a2a: 'agent'
+}
+
+// Effective gateway path per asset (aligned to publishAssets order): the asset-type prefix (or a
+// per-asset pathPrefix override) is prepended when useAssetTypePathPrefix is true. A pathPrefix of ''
+// opts a single asset out even when the global toggle is on.
+var effectivePaths = [
+  for asset in publishAssets: (useAssetTypePathPrefix
+    ? (empty(asset.?pathPrefix ?? assetTypePrefixDefault[asset.assetType])
+        ? asset.path
+        : '${asset.?pathPrefix ?? assetTypePrefixDefault[asset.assetType]}/${asset.path}')
+    : (empty(asset.?pathPrefix ?? '') ? asset.path : '${asset.pathPrefix}/${asset.path}'))
+]
+
 // ============================================================================
 // USAGE FRAGMENTS (idempotent, standalone-friendly)
 // ============================================================================
@@ -162,7 +184,7 @@ module backends 'modules/publishBackend.bicep' = [for asset in publishAssets: if
 // ============================================================================
 
 // API -> MCP (reuses the source API's backend)
-module mcpFromApi 'modules/publishMcpFromApi.bicep' = [for asset in publishAssets: if (asset.assetType == 'mcp-from-api') {
+module mcpFromApi 'modules/publishMcpFromApi.bicep' = [for (asset, i) in publishAssets: if (asset.assetType == 'mcp-from-api') {
   name: 'mcp-from-api-${asset.name}'
   scope: apimRg
   params: {
@@ -173,7 +195,7 @@ module mcpFromApi 'modules/publishMcpFromApi.bicep' = [for asset in publishAsset
     mcpName: asset.name
     mcpDisplayName: asset.displayName
     mcpDescription: asset.description
-    mcpPath: asset.path
+    mcpPath: effectivePaths[i]
     mcpSubscriptionRequired: asset.?subscriptionRequired ?? true
     subscriptionKeyHeaderName: asset.?subscriptionKeyHeaderName ?? 'api-key'
     mcpPolicyXml: asset.?policyXml ?? ''
@@ -184,7 +206,7 @@ module mcpFromApi 'modules/publishMcpFromApi.bicep' = [for asset in publishAsset
 }]
 
 // Remote / native MCP server
-module mcpExisting 'modules/publishMcpExisting.bicep' = [for asset in publishAssets: if (asset.assetType == 'mcp-existing') {
+module mcpExisting 'modules/publishMcpExisting.bicep' = [for (asset, i) in publishAssets: if (asset.assetType == 'mcp-existing') {
   name: 'mcp-existing-${asset.name}'
   scope: apimRg
   params: {
@@ -194,7 +216,7 @@ module mcpExisting 'modules/publishMcpExisting.bicep' = [for asset in publishAss
     mcpName: asset.name
     mcpDisplayName: asset.displayName
     mcpDescription: asset.description
-    mcpPath: asset.path
+    mcpPath: effectivePaths[i]
     mcpTransportType: asset.?transportType ?? 'streamable'
     mcpSubscriptionRequired: asset.?subscriptionRequired ?? true
     subscriptionKeyHeaderName: asset.?subscriptionKeyHeaderName ?? 'api-key'
@@ -207,7 +229,7 @@ module mcpExisting 'modules/publishMcpExisting.bicep' = [for asset in publishAss
 }]
 
 // A2A agent
-module a2aAgent 'modules/publishA2aAgent.bicep' = [for asset in publishAssets: if (asset.assetType == 'a2a') {
+module a2aAgent 'modules/publishA2aAgent.bicep' = [for (asset, i) in publishAssets: if (asset.assetType == 'a2a') {
   name: 'a2a-${asset.name}'
   scope: apimRg
   params: {
@@ -217,7 +239,7 @@ module a2aAgent 'modules/publishA2aAgent.bicep' = [for asset in publishAssets: i
     agentId: asset.?agentId ?? ''
     agentDisplayName: asset.displayName
     agentDescription: asset.description
-    agentPath: asset.path
+    agentPath: effectivePaths[i]
     agentCardPath: asset.?agentCardPath ?? '/.well-known/agent.json'
     agentCardBackendUrl: asset.agentCardBackendUrl
     jsonRpcBackendUrl: asset.backend.url
@@ -242,7 +264,7 @@ resource apicRg 'Microsoft.Resources/resourceGroups@2022-09-01' existing = if (!
   name: empty(apiCenter.?resourceGroupName ?? '') ? apim.resourceGroupName : apiCenter.resourceGroupName
 }
 
-module apicRegistration 'modules/publishApiCenter.bicep' = [for asset in publishAssets: if ((asset.?publishToApiCenter ?? false) && !empty(apiCenter.?serviceName ?? '')) {
+module apicRegistration 'modules/publishApiCenter.bicep' = [for (asset, i) in publishAssets: if ((asset.?publishToApiCenter ?? false) && !empty(apiCenter.?serviceName ?? '')) {
   name: 'apic-reg-${asset.name}'
   scope: apicRg
   params: {
@@ -258,7 +280,7 @@ module apicRegistration 'modules/publishApiCenter.bicep' = [for asset in publish
     versionDisplayName: asset.apiCenter.?versionDisplayName ?? '1.0.0'
     gatewayUrl: gatewayUrl
     // APIM appends /mcp to the path for API->MCP tools only; native/remote MCP and A2A use the path as-is.
-    apiPath: asset.assetType == 'mcp-from-api' ? '${asset.path}/mcp' : asset.path
+    apiPath: asset.assetType == 'mcp-from-api' ? '${effectivePaths[i]}/mcp' : effectivePaths[i]
     customProperties: asset.apiCenter.?customProperties ?? {}
     documentationUrl: asset.apiCenter.?documentationUrl ?? ''
     contacts: asset.apiCenter.?contacts ?? []
@@ -281,9 +303,9 @@ output gatewayUrl string = gatewayUrl
 output publishedAssets array = [for (asset, i) in publishAssets: {
   name: asset.name
   assetType: asset.assetType
-  path: asset.path
+  path: effectivePaths[i]
   // API->MCP tools are served at {path}/mcp (APIM appends /mcp); native/remote MCP and A2A at {path}.
-  endpoint: asset.assetType == 'mcp-from-api' ? '${gatewayUrl}/${asset.path}/mcp' : '${gatewayUrl}/${asset.path}'
-  agentCard: asset.assetType == 'a2a' ? '${gatewayUrl}/${asset.path}${asset.?agentCardPath ?? '/.well-known/agent.json'}' : ''
+  endpoint: asset.assetType == 'mcp-from-api' ? '${gatewayUrl}/${effectivePaths[i]}/mcp' : '${gatewayUrl}/${effectivePaths[i]}'
+  agentCard: asset.assetType == 'a2a' ? '${gatewayUrl}/${effectivePaths[i]}${asset.?agentCardPath ?? '/.well-known/agent.json'}' : ''
   publishedToApiCenter: asset.?publishToApiCenter ?? false
 }]

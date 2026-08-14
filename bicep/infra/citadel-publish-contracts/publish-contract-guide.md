@@ -27,11 +27,13 @@ Assets are declared as entries in the `publishAssets` array of a `.bicepparam` f
 
 | `assetType` | Description | APIM type | Gateway endpoint | Backend |
 | --- | --- | --- | --- | --- |
-| `mcp-from-api` | Wrap selected operations of an **existing onboarded REST API** as MCP tools | `mcp` (`mcpTools[]`) | `{gateway}/{path}/mcp` | Reuses the source API's backend |
-| `mcp-existing` | Publish an **existing/remote MCP server** (e.g. `https://learn.microsoft.com/api/mcp`) | `mcp` (`backendId` + `mcpPropperties`) | `{gateway}/{path}` | Dedicated `<name>-backend` |
-| `a2a` | Publish a native **A2A agent** endpoint + agent card (e.g. a Foundry-hosted agent) | `a2a` (`a2aProperties` + `jsonRpcProperties`) | `{gateway}/{path}` (card at `/.well-known/agent.json`) | Policy MI auth to backend (no backend object, see §4); optional subscription-key on the client |
+| `mcp-from-api` | Wrap selected operations of an **existing onboarded REST API** as MCP tools | `mcp` (`mcpTools[]`) | `{gateway}/mcp/{path}/mcp` | Reuses the source API's backend |
+| `mcp-existing` | Publish an **existing/remote MCP server** (e.g. `https://learn.microsoft.com/api/mcp`) | `mcp` (`backendId` + `mcpPropperties`) | `{gateway}/mcp/{path}` | Dedicated `<name>-backend` |
+| `a2a` | Publish a native **A2A agent** endpoint + agent card (e.g. a Foundry-hosted agent) | `a2a` (`a2aProperties` + `jsonRpcProperties`) | `{gateway}/agent/{path}` (card at `/.well-known/agent.json`) | Policy MI auth to backend (no backend object, see §4); optional subscription-key on the client |
 
-> **MCP endpoint suffix (important):** APIM appends `/mcp` to the path **only** for API→MCP tools (`mcp-from-api`) — e.g. `path: 'weather-tool-mcp'` → `{gateway}/weather-tool-mcp/mcp`. For a native/remote MCP server (`mcp-existing`) APIM does **not** append `/mcp` — the endpoint is `{gateway}/{path}` exactly (e.g. `{gateway}/ms-learn-tool-mcp`). Point MCP clients at these URLs accordingly.
+> **Asset-type path prefix (default on):** with `useAssetTypePathPrefix = true` (default) every **Tool** is served under an `mcp/` segment and every **Agent** under an `agent/` segment — e.g. `path: 'weather-tool-mcp'` → `{gateway}/mcp/weather-tool-mcp/...`, `path: 'hr-chat-agent'` → `{gateway}/agent/hr-chat-agent`. This namespaces tools and agents on the gateway. Override per asset with `pathPrefix` (a custom segment, or `''` to opt one asset out), or set the global toggle to `false` to keep legacy un-prefixed paths. See [§7 Path prefixing & backward compatibility](#7-path-prefixing--backward-compatibility).
+
+> **MCP endpoint suffix (important):** APIM appends `/mcp` to the path **only** for API→MCP tools (`mcp-from-api`) — e.g. `path: 'weather-tool-mcp'` → `{gateway}/mcp/weather-tool-mcp/mcp` (note the `mcp/` prefix *and* the `/mcp` suffix). For a native/remote MCP server (`mcp-existing`) APIM does **not** append `/mcp` — the endpoint is `{gateway}/mcp/{path}` exactly (e.g. `{gateway}/mcp/ms-learn-tool-mcp`). Point MCP clients at these URLs accordingly. (With the prefix disabled these become `{gateway}/{path}/mcp` and `{gateway}/{path}`.)
 
 ---
 
@@ -46,12 +48,15 @@ Global parameters (see [main.bicepparam](./main.bicepparam)):
 | `configureCircuitBreaker` | Master toggle for backend circuit breakers (default `true`) |
 | `circuitBreakerDefaults` | Default breaker settings, shallow-merged with per-asset overrides |
 | `ensureUsageFragments` | Create the `mcp-usage` / `a2a-usage` fragments if missing (default `true`) |
+| `useAssetTypePathPrefix` | Prefix each asset's gateway path with its type segment — `mcp/` for Tools, `agent/` for Agents (default `true`). `false` = legacy un-prefixed paths. Per-asset override via `pathPrefix`. |
 | `apiCenter` | `{ subscriptionId, resourceGroupName, serviceName, workspaceName }` — required only if any asset opts into API Center |
 | `publishAssets` | The array of assets to publish |
 
 ### Per-asset fields
 
 Common: `assetType`, `name`, `displayName`, `description`, `path`, `metadata`, `policyXml?`, `publishToApiCenter?`, `apiCenter?`.
+
+> **`pathPrefix` (optional):** overrides the automatic asset-type prefix for a single asset. Set a custom segment (e.g. `'tools'`) to group differently, or `''` to publish this one asset at the bare `path` even when `useAssetTypePathPrefix` is on. Omit it to use the default (`mcp` for Tools, `agent` for Agents).
 
 **`metadata`** (informational governance context surfaced to operators / API Center):
 
@@ -203,7 +208,34 @@ The asset is registered (kind `mcp` or `a2a`) via the shared `api-center-onboard
 
 ---
 
-## 7. Publishing a Foundry agent as A2A
+## 7. Path prefixing & backward compatibility
+
+By default (`useAssetTypePathPrefix = true`) the module prepends an **asset-type segment** to every published asset's gateway path, so the gateway namespaces assets by type:
+
+| Asset type | `path` | Endpoint (prefix on) | Endpoint (prefix off) |
+| --- | --- | --- | --- |
+| `mcp-from-api` | `weather-tool-mcp` | `{gateway}/mcp/weather-tool-mcp/mcp` | `{gateway}/weather-tool-mcp/mcp` |
+| `mcp-existing` | `ms-learn-tool-mcp` | `{gateway}/mcp/ms-learn-tool-mcp` | `{gateway}/ms-learn-tool-mcp` |
+| `a2a` | `hr-chat-agent` | `{gateway}/agent/hr-chat-agent` | `{gateway}/hr-chat-agent` |
+
+**Controls**
+
+- **Global toggle** — `useAssetTypePathPrefix` (default `true`). Set `false` to restore the legacy behavior where `path` is used verbatim.
+- **Per-asset override** — `pathPrefix` on any asset: a custom segment (e.g. `'tools'` → `{gateway}/tools/{path}`) or `''` to opt that single asset out even when the toggle is on.
+- The **`/mcp` suffix** on `mcp-from-api` is unchanged — it is APIM behavior, independent of this prefix — so an API→MCP tool ends up with **both** (`{gateway}/mcp/{path}/mcp`). Choose `path` names accordingly (e.g. drop a trailing `-mcp` if the double reads awkwardly).
+
+### ⚠️ Backward-compatibility considerations
+
+Enabling the prefix **changes the public URL** of every published asset. When adopting it on an existing gateway:
+
+1. **Clients must repoint.** Existing MCP/A2A clients calling `{gateway}/{path}` (or `{gateway}/{path}/mcp`) break — update them to the `mcp/` / `agent/` URLs (or keep `useAssetTypePathPrefix = false` until they migrate).
+2. **Access Contracts auto-heal on redeploy, but stored secrets go stale.** The [Access Contract](../citadel-access-contracts/README.md) resolves each granted API's path **live** from APIM at deploy time, so re-running an access contract picks up the new path automatically. However, Key Vault **endpoint secrets** and Foundry connections written by an earlier run still hold the old URL until the access contract is redeployed — re-run it after flipping the prefix.
+3. **API Center runtime URIs change.** Re-registration updates each asset's `apiPath` (`mcp/{path}[/mcp]` or `agent/{path}`); consumers reading the runtime URI from API Center get the new value.
+4. **Escape hatch.** For a phased rollout, keep `useAssetTypePathPrefix = false` globally and prefix assets one at a time with a per-asset `pathPrefix`, or vice-versa (`true` globally with `pathPrefix: ''` on assets that must stay on legacy paths).
+
+---
+
+## 8. Publishing a Foundry agent as A2A
 
 Foundry-hosted agents can be exposed as A2A endpoints. Before publishing:
 
@@ -240,13 +272,13 @@ APIM re-exposes the Foundry agent card (served at the custom `agentCard/v1.0` pa
 
 ---
 
-## 8. Validation
+## 9. Validation
 
 `validation/citadel-publish-contract-tests.ipynb` deploys and validates all three asset types end-to-end (MCP handshake, agent-card fetch, JSON-RPC call, policy application, usage metrics, and circuit-breaker resiliency). See that notebook for a runnable scenario.
 
 ---
 
-## 9. Related
+## 10. Related
 
 - [Access Contract](../citadel-access-contracts/README.md)
 - [Backend Contract](../llm-backend-onboarding/README.md)

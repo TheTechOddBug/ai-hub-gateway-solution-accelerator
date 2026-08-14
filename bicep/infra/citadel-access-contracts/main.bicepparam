@@ -214,6 +214,38 @@ param apiNameMapping = {
 //   policyXml: '' // Uses default policy from ./policies/default-ai-product-policy.xml
 // }
 //
+// ----------------------------------------------------------------------------
+// MULTI-ASSET CONTRACTS (LLM + Tools/MCP + Agents/A2A in ONE product)
+// ----------------------------------------------------------------------------
+// A single product shares ONE api-key (apiKeySecretName) across every granted
+// asset. Because each asset (LLM inference API, published Tool, published Agent)
+// has its own gateway path, publish an endpoint secret PER asset with either:
+//
+//   * assetEndpoints — explicit list; empty endpointSecretName auto-generates
+//     <code>-<businessUnit>-<useCase>-<env>-<apiName>-endpoint
+//   * publishAllAssetEndpoints: true — auto-publish an endpoint secret for EVERY
+//     API in apiNameMapping[code] (names overridable via assetEndpoints)
+//
+// foundryApiName selects which granted API is the LLM endpoint wired to the
+// Foundry connection (Foundry supports the LLM endpoint only). It defaults to the
+// first known LLM API, else the first API.
+//
+// Example (MULTI product granting LLM + a Tool + an Agent, KV endpoint per asset):
+// param apiNameMapping = { MULTI: ['universal-llm-api', 'weather-tool', 'hr-chat-agent'] }
+// param services = [
+//   {
+//     code: 'MULTI'
+//     apiKeySecretName: 'HR_CHATAGENT_KEY'          // one shared key for the contract
+//     foundryApiName: 'universal-llm-api'           // Foundry connects to the LLM endpoint
+//     assetEndpoints: [
+//       { apiName: 'universal-llm-api', endpointSecretName: 'HR_CHATAGENT_LLM_ENDPOINT' }
+//       { apiName: 'weather-tool' }                 // auto-named endpoint secret
+//       { apiName: 'hr-chat-agent' }                // auto-named endpoint secret
+//     ]
+//     policyXml: loadTextContent('ai-product-policy.xml')
+//   }
+// ]
+//
 // ============================================================================
 param services = [
   {
